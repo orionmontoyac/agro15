@@ -19,13 +19,13 @@ import { LayoutDashboardIcon, ListIcon, ChartBarIcon, FolderIcon, UsersIcon, Cam
 
 const data = {
   user: {
-    name: "shadcn",
-    email: "m@example.com",
+    name: "Usuario",
+    email: "usuario@agro15.co",
     avatar: "/avatars/shadcn.jpg",
   },
   navMain: [
     {
-      title: "Dashboard",
+      title: "Inicio",
       url: "#",
       icon: (
         <LayoutDashboardIcon
@@ -33,7 +33,7 @@ const data = {
       ),
     },
     {
-      title: "Lifecycle",
+      title: "Precios actuales",
       url: "#",
       icon: (
         <ListIcon
@@ -41,7 +41,7 @@ const data = {
       ),
     },
     {
-      title: "Analytics",
+      title: "Histórico",
       url: "#",
       icon: (
         <ChartBarIcon
@@ -49,7 +49,7 @@ const data = {
       ),
     },
     {
-      title: "Projects",
+      title: "Mercados",
       url: "#",
       icon: (
         <FolderIcon
@@ -57,7 +57,7 @@ const data = {
       ),
     },
     {
-      title: "Team",
+      title: "Productos",
       url: "#",
       icon: (
         <UsersIcon
@@ -124,7 +124,7 @@ const data = {
   ],
   navSecondary: [
     {
-      title: "Settings",
+      title: "Configuración",
       url: "#",
       icon: (
         <Settings2Icon
@@ -132,7 +132,7 @@ const data = {
       ),
     },
     {
-      title: "Get Help",
+      title: "Ayuda",
       url: "#",
       icon: (
         <CircleHelpIcon
@@ -140,7 +140,7 @@ const data = {
       ),
     },
     {
-      title: "Search",
+      title: "Buscar",
       url: "#",
       icon: (
         <SearchIcon
@@ -150,7 +150,7 @@ const data = {
   ],
   documents: [
     {
-      name: "Data Library",
+      name: "Granadilla",
       url: "#",
       icon: (
         <DatabaseIcon
@@ -158,7 +158,7 @@ const data = {
       ),
     },
     {
-      name: "Reports",
+      name: "Tomate",
       url: "#",
       icon: (
         <FileChartColumnIcon
@@ -166,7 +166,7 @@ const data = {
       ),
     },
     {
-      name: "Word Assistant",
+      name: "Gulupa",
       url: "#",
       icon: (
         <FileIcon
@@ -186,7 +186,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               render={<a href="#" />}
             >
               <CommandIcon className="size-5!" />
-              <span className="text-base font-semibold">Acme Inc.</span>
+              <span className="text-base font-semibold">agro15</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
