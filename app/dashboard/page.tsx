@@ -4,10 +4,11 @@ import { DataTable } from "@/components/data-table"
 import { SectionCards } from "@/components/section-cards"
 import { SiteHeader } from "@/components/site-header"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { getDashboardData } from "@/lib/sipsa/dashboard-data"
 
-import data from "./data.json"
+export default async function Page() {
+  const dashboardData = await getDashboardData()
 
-export default function Page() {
   return (
     <SidebarProvider
       style={
@@ -23,11 +24,38 @@ export default function Page() {
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-              <div className="px-4 lg:px-6">
-                <ChartAreaInteractive />
-              </div>
-              <SectionCards />
-              <DataTable data={data} />
+              {!dashboardData ? (
+                <div className="px-4 py-12 text-center text-muted-foreground lg:px-6">
+                  <p className="text-lg font-medium">
+                    No hay datos de precios disponibles
+                  </p>
+                  <p className="mt-2 text-sm">
+                    Ejecuta{" "}
+                    <code className="rounded bg-muted px-1.5 py-0.5">
+                      npm run sync:sipsa-catalog
+                    </code>{" "}
+                    y luego{" "}
+                    <code className="rounded bg-muted px-1.5 py-0.5">
+                      npm run sync:sipsa-prices -- 106 --years 3
+                    </code>{" "}
+                    (y códigos 46, 113) para cargar precios SIPSA.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="px-4 lg:px-6">
+                    <ChartAreaInteractive
+                      dataByProduct={dashboardData.chartDataByProduct}
+                      products={dashboardData.products}
+                    />
+                  </div>
+                  <SectionCards
+                    kpis={dashboardData.kpis}
+                    avgChangePct={dashboardData.avgChangePct}
+                  />
+                  <DataTable data={dashboardData.tableRows} />
+                </>
+              )}
             </div>
           </div>
         </div>
