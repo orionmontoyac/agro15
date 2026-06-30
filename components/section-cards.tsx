@@ -1,5 +1,7 @@
 "use client"
 
+import Link from "next/link"
+
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -26,6 +28,15 @@ function formatChangePct(pct: number | null): string {
   if (pct === null) return "—"
   const sign = pct >= 0 ? "+" : ""
   return `${sign}${pct.toFixed(1)}%`
+}
+
+function formatDate(date: string | null): string {
+  if (!date) return "—"
+  return new Date(date).toLocaleDateString("es-CO", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
 }
 
 function trendFooterText(trendLabel: string): string {
@@ -57,31 +68,47 @@ export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
           : "Estable"
 
   return (
-    <div className="grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4 dark:*:data-[slot=card]:bg-card">
+    <div className="flex flex-col gap-4">
+      <div className="px-4 lg:px-6">
+        <h2 className="text-lg font-semibold">Últimos precios de productos</h2>
+        <p className="text-sm text-muted-foreground">
+          Precios más recientes en mercados mayoristas. Selecciona un producto
+          para ver su historial y estadísticas.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-4 px-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/10 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs md:grid-cols-3 lg:px-6 dark:*:data-[slot=card]:bg-card">
       {kpis.map((kpi) => (
-        <Card key={kpi.name} className="@container/card">
-          <CardHeader>
-            <CardDescription>{kpi.name}</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-              {formatPrice(kpi.price)}
-            </CardTitle>
-            <CardAction>
-              <Badge variant="outline">
+        <Link
+          key={kpi.code}
+          href={`/products/${kpi.code}`}
+          className="block rounded-xl transition-colors hover:ring-2 hover:ring-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Card className="@container/card h-full">
+            <CardHeader>
+              <CardTitle className="line-clamp-2 text-lg font-semibold leading-snug @[250px]/card:text-xl">
+                {kpi.name}
+              </CardTitle>
+              <CardDescription className="text-lg font-semibold tabular-nums text-foreground\\\">
+                {formatPrice(kpi.price)}
+              </CardDescription>
+              <CardAction>
+                <Badge variant="outline">
+                  <TrendIcon trendLabel={kpi.trendLabel} />
+                  {formatChangePct(kpi.changePct)}
+                </Badge>
+              </CardAction>
+            </CardHeader>
+            <CardFooter className="flex-col items-start gap-1.5 text-sm">
+              <div className="line-clamp-1 flex gap-2 font-medium">
+                {trendFooterText(kpi.trendLabel)}{" "}
                 <TrendIcon trendLabel={kpi.trendLabel} />
-                {formatChangePct(kpi.changePct)}
-              </Badge>
-            </CardAction>
-          </CardHeader>
-          <CardFooter className="flex-col items-start gap-1.5 text-sm">
-            <div className="line-clamp-1 flex gap-2 font-medium">
-              {trendFooterText(kpi.trendLabel)}{" "}
-              <TrendIcon trendLabel={kpi.trendLabel} />
-            </div>
-            <div className="text-muted-foreground">
-              Precio SIPSA — mercado mayorista Medellín
-            </div>
-          </CardFooter>
-        </Card>
+              </div>
+              <div className="text-muted-foreground">
+                {formatDate(kpi.priceDate)} · Precio SIPSA — {kpi.market}
+              </div>
+            </CardFooter>
+          </Card>
+        </Link>
       ))}
       <Card className="@container/card">
         <CardHeader>
@@ -98,13 +125,15 @@ export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Promedio de las 3 frutas <TrendIcon trendLabel={avgTrend} />
+            Promedio de {kpis.length} productos{" "}
+            <TrendIcon trendLabel={avgTrend} />
           </div>
           <div className="text-muted-foreground">
-            Granadilla, Tomate y Gulupa
+            Variación mensual en mercados SIPSA
           </div>
         </CardFooter>
       </Card>
+      </div>
     </div>
   )
 }

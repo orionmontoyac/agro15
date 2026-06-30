@@ -10,3 +10,11 @@ export const MEDELLIN_CODE = "05001"
 export const BOGOTA_CODE = "11001"
 
 export const DEFAULT_PRODUCT_CODE = "106"
+
+export type MunicipalityFilter = "all" | typeof MEDELLIN_CODE | typeof BOGOTA_CODE
+
+export const MUNICIPALITY_FILTER_OPTIONS = [
+  { value: "all" as const, label: "Todos los mercados" },
+  { value: MEDELLIN_CODE, label: "Medellín" },
+  { value: BOGOTA_CODE, label: "Bogotá" },
+]
