@@ -21,12 +21,41 @@ function parseDate(date: string): Date {
   return new Date(`${date}T12:00:00`)
 }
 
-function formatDateLabel(date: string): string {
+function toLocalDateIso(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function formatShortDate(date: string): string {
   const d = parseDate(date)
-  const day = String(d.getDate()).padStart(2, "0")
-  const month = String(d.getMonth() + 1).padStart(2, "0")
-  const year = d.getFullYear()
-  return `${day}/${month}/${year}`
+  const month = d.toLocaleDateString("es-CO", { month: "long" })
+  const monthLabel = month.charAt(0).toUpperCase() + month.slice(1)
+  return `${d.getDate()} ${monthLabel}`
+}
+
+function getContextDateLabel(date: string): {
+  primary: string
+  secondary: string
+} {
+  const todayIso = toLocalDateIso(new Date())
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayIso = toLocalDateIso(yesterday)
+
+  if (date === todayIso) {
+    return { primary: "HOY", secondary: formatDayName(date) }
+  }
+
+  if (date === yesterdayIso) {
+    return { primary: "Ayer", secondary: formatDayName(date) }
+  }
+
+  return {
+    primary: formatShortDate(date),
+    secondary: formatDayName(date),
+  }
 }
 
 function formatDayName(date: string): string {
@@ -104,14 +133,21 @@ export function ProductLastSevenDays({
 
           if (!hasMedellin && !hasBogota) return null
 
+          const dateLabel = getContextDateLabel(entry.date)
+
           return (
             <Card key={entry.date} className="bg-linear-to-t from-primary/8 to-card shadow-xs dark:bg-card">
               <CardHeader className="gap-2 pb-4">
-                <CardDescription className="capitalize">
-                  {formatDayName(entry.date)}
+                <CardDescription
+                  className={cn(
+                    dateLabel.primary === "HOY" && "font-semibold text-primary",
+                    dateLabel.primary === "Ayer" && "font-medium"
+                  )}
+                >
+                  {dateLabel.primary}
                 </CardDescription>
-                <p className="text-xs text-muted-foreground">
-                  {formatDateLabel(entry.date)}
+                <p className="text-xs text-muted-foreground capitalize">
+                  {dateLabel.secondary}
                 </p>
                 <div className="flex flex-col gap-2 pt-1">
                   {hasMedellin && (
