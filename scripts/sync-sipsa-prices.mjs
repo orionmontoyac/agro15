@@ -8,6 +8,7 @@
  * Usage:
  *   npm run sync:sipsa-prices -- 106
  *   npm run sync:sipsa-prices -- 106 --years 3
+ *   npm run sync:sipsa-prices -- 116 --update   # fill from last stored date to today
  *   npm run sync:sipsa-prices-granadilla   # shorthand for code 106
  *
  * Prerequisites:
@@ -34,6 +35,7 @@ function parseArgs(argv) {
   let productCode = null
   let days = null
   let years = null
+  let update = false
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--days') {
@@ -48,6 +50,8 @@ function parseArgs(argv) {
         throw new Error('--years must be a positive number')
       }
       years = value
+    } else if (args[i] === '--update') {
+      update = true
     } else if (args[i] === '--help' || args[i] === '-h') {
       printUsage()
       process.exit(0)
@@ -66,25 +70,32 @@ function parseArgs(argv) {
     process.exit(1)
   }
 
-  if (days != null && years != null) {
-    throw new Error('Use either --days or --years, not both')
+  const rangeFlags = [days != null, years != null, update].filter(Boolean).length
+  if (rangeFlags > 1) {
+    throw new Error('Use only one of --days, --years, or --update')
   }
 
   return {
     productCode,
-    range: years != null ? getDateRangeFromYears(years) : getDateRange(days ?? DEFAULT_DAYS),
+    update,
+    range:
+      update || years != null
+        ? null
+        : getDateRange(days ?? DEFAULT_DAYS),
+    years,
   }
 }
 
 function printUsage() {
   console.log(
-    `Usage: npm run sync:sipsa-prices -- <product-code> [--days ${DEFAULT_DAYS}] [--years N]`
+    `Usage: npm run sync:sipsa-prices -- <product-code> [--days ${DEFAULT_DAYS}] [--years N] [--update]`
   )
   console.log('')
   console.log('Examples:')
   console.log('  npm run sync:sipsa-prices -- 106              # last 30 days')
   console.log('  npm run sync:sipsa-prices -- 106 --days 7')
   console.log('  npm run sync:sipsa-prices -- 106 --years 3    # last 3 calendar years')
+  console.log('  npm run sync:sipsa-prices -- 116 --update     # fill from last stored date to today')
   console.log('  npm run sync:sipsa-prices -- 46 --years 3     # Tomate chonto')
   console.log('  npm run sync:sipsa-prices -- 113 --years 3    # Gulupa')
 }
@@ -111,6 +122,38 @@ function buildRange(start, end, label) {
     endIso: end.toISOString().slice(0, 10),
     spanDays: Math.ceil((end - start) / (1000 * 60 * 60 * 24)),
     label,
+  }
+}
+
+function todayAtNoon() {
+  const date = new Date()
+  date.setHours(12, 0, 0, 0)
+  return date
+}
+
+function getUpdateDateRange(lastDateIso) {
+  const end = todayAtNoon()
+
+  if (!lastDateIso) {
+    return {
+      ...getDateRange(DEFAULT_DAYS),
+      noExistingData: true,
+    }
+  }
+
+  const start = new Date(`${lastDateIso}T12:00:00`)
+  start.setDate(start.getDate() + 1)
+
+  const startIso = start.toISOString().slice(0, 10)
+  const endIso = end.toISOString().slice(0, 10)
+
+  if (startIso > endIso) {
+    return { upToDate: true, lastDateIso }
+  }
+
+  return {
+    ...buildRange(start, end, `update after ${lastDateIso}`),
+    lastDateIso,
   }
 }
 
@@ -217,6 +260,23 @@ function mapPriceRecords(records, productId, municipalityId, departmentId) {
   return rows
 }
 
+async function getLatestPriceDate(supabase, productId, municipalityId) {
+  const { data, error } = await supabase
+    .from('sipsa_product_prices')
+    .select('date')
+    .eq('product_id', productId)
+    .eq('municipality_id', municipalityId)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Failed to load latest price date: ${error.message}`)
+  }
+
+  return data?.date ?? null
+}
+
 async function loadCatalogIds(supabase, productCode) {
   const { data: product, error: productError } = await supabase
     .from('sipsa_products')
@@ -256,14 +316,21 @@ async function loadCatalogIds(supabase, productCode) {
 }
 
 async function main() {
-  const { productCode, range } = parseArgs(process.argv)
+  const { productCode, update, range: fixedRange, years } = parseArgs(process.argv)
+  const backfillRange =
+    years != null ? getDateRangeFromYears(years) : null
 
   console.log('=== SIPSA price sync → Supabase ===\n')
 
   console.log(`Product code: ${productCode}`)
-  console.log(
-    `Date range: ${range.startIso} → ${range.endIso} (${range.label}, ~${range.spanDays} days)\n`
-  )
+  if (update) {
+    console.log('Mode: update (fill from last stored date to today)\n')
+  } else {
+    const range = backfillRange ?? fixedRange
+    console.log(
+      `Date range: ${range.startIso} → ${range.endIso} (${range.label}, ~${range.spanDays} days)\n`
+    )
+  }
 
   const supabase = createSupabaseAdmin()
   const { product, munByCode } = await loadCatalogIds(supabase, productCode)
@@ -276,6 +343,40 @@ async function main() {
     console.log(`Fetching ${location.label} (${location.municipality_code})...`)
 
     const municipality = munByCode.get(location.municipality_code)
+
+    let range = backfillRange ?? fixedRange
+    if (update) {
+      const lastDate = await getLatestPriceDate(
+        supabase,
+        product.id,
+        municipality.id
+      )
+      const updateRange = getUpdateDateRange(lastDate)
+
+      if (updateRange.upToDate) {
+        console.log(`  Already up to date (latest stored: ${updateRange.lastDateIso})\n`)
+        results.push({
+          location,
+          count: 0,
+          latest: { date: updateRange.lastDateIso },
+          skipped: true,
+        })
+        continue
+      }
+
+      range = updateRange
+
+      if (updateRange.noExistingData) {
+        console.log(
+          `  No stored prices yet — fetching last ${DEFAULT_DAYS} days (${range.startIso} → ${range.endIso})`
+        )
+      } else {
+        console.log(
+          `  Last stored: ${updateRange.lastDateIso} — fetching ${range.startIso} → ${range.endIso}`
+        )
+      }
+    }
+
     const records = await fetchPricesForLocation(location, productCode, range)
 
     const rows = mapPriceRecords(
@@ -308,10 +409,16 @@ async function main() {
   console.log('=== Summary ===')
   console.log(`Product: ${product.product_name} (${product.product_code})`)
   console.log(`Total price rows upserted: ${total}`)
-  for (const { location, count, latest } of results) {
+  for (const { location, count, latest, skipped } of results) {
     if (latest) {
+      const suffix =
+        latest.price != null
+          ? ` @ $${latest.price}/kg`
+          : skipped
+            ? ' (up to date)'
+            : ''
       console.log(
-        `  ${location.label}: ${count} rows, latest ${latest.date} @ $${latest.price}/kg`
+        `  ${location.label}: ${count} rows, latest ${latest.date}${suffix}`
       )
     } else {
       console.log(`  ${location.label}: no data`)
