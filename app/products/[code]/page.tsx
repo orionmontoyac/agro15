@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
@@ -11,10 +12,27 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { getProductDetail } from "@/lib/sipsa/products-data"
+import {
+  buildProductPageMetadata,
+  productNotFoundMetadata,
+} from "@/lib/sipsa/product-metadata"
+import { getProductByCode, getProductDetail } from "@/lib/sipsa/products-data"
 
 type ProductDetailPageProps = {
   params: Promise<{ code: string }>
+}
+
+export async function generateMetadata({
+  params,
+}: ProductDetailPageProps): Promise<Metadata> {
+  const { code } = await params
+  const product = await getProductByCode(code)
+
+  if (!product) {
+    return productNotFoundMetadata
+  }
+
+  return buildProductPageMetadata(product)
 }
 
 export default async function ProductDetailPage({
