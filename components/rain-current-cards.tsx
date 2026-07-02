@@ -8,14 +8,11 @@ import {
 import { cn } from "@/lib/utils"
 import {
   getCurrentMonthAccumulation,
-  getCurrentMonthFromDaily,
-  getDaysWithoutRain,
-  getLast30DaysTotal,
+  getRecentRainStatus,
   type RainfallData,
 } from "@/lib/rain/rain-data"
 import {
   CalendarIcon,
-  CloudOffIcon,
   CloudRainIcon,
   DropletsIcon,
   SunIcon,
@@ -48,14 +45,9 @@ export function RainCurrentCards({ data }: RainCurrentCardsProps) {
     month: "long",
   })
 
-  const total30Days = getLast30DaysTotal(data.daily)
-  const monthTotal =
-    data.daily.length > 0
-      ? getCurrentMonthFromDaily(data.daily)
-      : getCurrentMonthAccumulation(data.monthly)
-
-  const drySpell = getDaysWithoutRain(data.daily)
+  const monthTotal = getCurrentMonthAccumulation(data.monthly)
   const isRainingNow = (data.current?.rainMm5m ?? 0) > 0
+  const isDryPeriod = data.periods != null && data.periods.rainMm72h === 0
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
@@ -90,7 +82,9 @@ export function RainCurrentCards({ data }: RainCurrentCardsProps) {
             Acumulado (30 días)
           </CardDescription>
           <CardTitle className="text-3xl font-semibold tabular-nums">
-            {data.daily.length > 0 ? formatRainMm(total30Days) : "—"}
+            {data.periods != null
+              ? formatRainMm(data.periods.rainMm30d)
+              : "—"}
           </CardTitle>
         </CardHeader>
         <CardFooter className="text-sm text-muted-foreground">
@@ -101,37 +95,31 @@ export function RainCurrentCards({ data }: RainCurrentCardsProps) {
       <Card
         className={cn(
           "bg-linear-to-t to-card shadow-xs dark:bg-card",
-          drySpell.days > 7
-            ? "from-chart-5/15"
-            : drySpell.days > 0
-              ? "from-primary/8"
-              : "from-primary/10"
+          isDryPeriod ? "from-chart-5/15" : "from-primary/8"
         )}
       >
         <CardHeader className="gap-2">
           <CardDescription className="flex items-center gap-2">
-            {drySpell.days > 0 ? (
+            {isDryPeriod ? (
               <SunIcon className="size-4" />
             ) : (
-              <CloudOffIcon className="size-4" />
+              <CloudRainIcon className="size-4" />
             )}
-            Días sin lluvia
+            Lluvia (72 horas)
           </CardDescription>
           <CardTitle
             className={cn(
               "text-3xl font-semibold tabular-nums",
-              drySpell.days > 7 && "text-chart-5"
+              isDryPeriod && "text-chart-5"
             )}
           >
-            {data.daily.length > 0 ? drySpell.days : "—"}
+            {data.periods != null
+              ? formatRainMm(data.periods.rainMm72h)
+              : "—"}
           </CardTitle>
         </CardHeader>
         <CardFooter className="text-sm text-muted-foreground">
-          {drySpell.lastRainLabel && drySpell.lastRainMm != null
-            ? `Última lluvia: ${drySpell.lastRainLabel} · ${formatRainMm(drySpell.lastRainMm)}`
-            : drySpell.days > 0
-              ? "Sin lluvia registrada en el periodo de 30 días"
-              : "Lluvia registrada hoy o ayer"}
+          {getRecentRainStatus(data.periods)}
         </CardFooter>
       </Card>
 
@@ -148,6 +136,9 @@ export function RainCurrentCards({ data }: RainCurrentCardsProps) {
         <CardFooter className="flex flex-col items-start gap-1 text-sm text-muted-foreground">
           <span className="capitalize">
             {currentMonthLabel} · {data.location.municipality}
+            {data.location.stationCode
+              ? ` · Est. ${data.location.stationCode}`
+              : ""}
           </span>
           {data.current?.updatedAt && (
             <span>Actualizado {formatUpdatedAt(data.current.updatedAt)}</span>

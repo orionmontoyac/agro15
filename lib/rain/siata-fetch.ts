@@ -7,25 +7,6 @@ export const SIATA_DEFAULT_TIMEOUT_MS = 120_000
 
 export const URRAO_MUNICIPALITY = "Urrao"
 
-export const URRAO_STATION_CODE = "641"
-
-export const SIATA_30D_RAIN_URL = `https://geoportal.siata.gov.co/fastgeoapi/geodata/geographJson/2/pluvio_30d/${URRAO_STATION_CODE}`
-
-const SIATA_GEO_HEADERS = {
-  Accept: "application/json",
-  "Accept-Language": "es-CO,es;q=0.9",
-}
-
-export type Siata30DayRainResponse = {
-  info?: {
-    NombreEstacion?: string
-    Codigo?: string
-    Ciudad?: string
-    Tiempo?: string[]
-    pluvio_1?: number[]
-  }
-}
-
 const SIATA_HEADERS = {
   Accept: "application/json, text/javascript, */*; q=0.01",
   "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
@@ -120,30 +101,4 @@ export function getUrraoSensor(
   const index = findUrraoSensorIndex(data.feature_vector)
   if (index == null || !data.feature_vector) return null
   return data.feature_vector[index] ?? null
-}
-
-export async function fetchSiata30DayRain(): Promise<Siata30DayRainResponse | null> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(
-    () => controller.abort(),
-    SIATA_DEFAULT_TIMEOUT_MS
-  )
-
-  try {
-    const response = await fetch(SIATA_30D_RAIN_URL, {
-      headers: SIATA_GEO_HEADERS,
-      signal: controller.signal,
-      next: { revalidate: 3600 },
-    })
-
-    if (!response.ok) {
-      throw new Error(`SIATA geoportal API error ${response.status}`)
-    }
-
-    return (await response.json()) as Siata30DayRainResponse
-  } catch (error) {
-    throw formatFetchError(error, SIATA_30D_RAIN_URL)
-  } finally {
-    clearTimeout(timeoutId)
-  }
 }

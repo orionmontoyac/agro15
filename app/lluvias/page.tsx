@@ -1,6 +1,5 @@
 import { AppShell } from "@/components/app-shell"
 import { RainCurrentCards } from "@/components/rain-current-cards"
-import { RainDailyChart } from "@/components/rain-daily-chart"
 import { RainMonthlyChart } from "@/components/rain-monthly-chart"
 import { getRainfallData } from "@/lib/rain/rain-data"
 
@@ -14,9 +13,9 @@ export default async function LluviasPage() {
           <div>
             <h2 className="text-lg font-semibold">Monitoreo de lluvias</h2>
             <p className="text-sm text-muted-foreground">
-              Consulta la lluvia reciente, el historial diario de los últimos 30
-              días y el acumulado mensual en Urrao, Antioquia. Datos oficiales
-              SIATA para apoyar decisiones agrícolas.
+              Consulta la lluvia reciente, acumulados por periodo (5 min, 72 h,
+              30 días) y el historial mensual en Urrao, Antioquia. Datos
+              oficiales SIATA para apoyar decisiones agrícolas.
             </p>
           </div>
 
@@ -33,12 +32,6 @@ export default async function LluviasPage() {
           ) : (
             <div className="flex flex-col gap-4 md:gap-6">
               <RainCurrentCards data={rainfall} />
-              {rainfall.daily.length > 0 && (
-                <RainDailyChart
-                  daily={rainfall.daily}
-                  stationName={rainfall.location.stationName}
-                />
-              )}
               {rainfall.monthly.length > 0 && (
                 <RainMonthlyChart monthly={rainfall.monthly} />
               )}

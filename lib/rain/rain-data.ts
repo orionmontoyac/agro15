@@ -1,10 +1,8 @@
 import {
-  fetchSiata30DayRain,
   fetchSiataRainLayer,
   getUrraoSensor,
   parseMm,
   URRAO_MUNICIPALITY,
-  type Siata30DayRainResponse,
   type SiataRainLayerResponse,
 } from "./siata-fetch"
 
@@ -17,18 +15,17 @@ export type RainfallMonthlyPoint = {
   rainMm: number
 }
 
-export type RainfallDailyPoint = {
-  date: string
-  label: string
-  shortLabel: string
-  rainMm: number
+export type RainfallPeriods = {
+  rainMm24h: number
+  rainMm72h: number
+  rainMm30d: number
 }
 
 export type RainfallData = {
-  location: { municipality: string; region: string; stationName?: string }
+  location: { municipality: string; region: string; stationCode?: string }
   current: { rainMm5m: number; updatedAt: string } | null
+  periods: RainfallPeriods | null
   monthly: RainfallMonthlyPoint[]
-  daily: RainfallDailyPoint[]
 }
 
 const MONTH_LABELS = [
@@ -84,17 +81,6 @@ const MONTH_KEY_MAP: Record<string, number> = {
   P_ACUM_DICIEMBRE: 12,
 }
 
-function formatDailyLabel(dateIso: string): { label: string; shortLabel: string } {
-  const date = new Date(`${dateIso}T12:00:00`)
-  const month = date.toLocaleDateString("es-CO", { month: "long" })
-  const monthLabel = month.charAt(0).toUpperCase() + month.slice(1)
-  const shortMonth = date.toLocaleDateString("es-CO", { month: "short" })
-  return {
-    label: `${date.getDate()} ${monthLabel}`,
-    shortLabel: `${date.getDate()} ${shortMonth}`,
-  }
-}
-
 export function parseMonthlySeries(
   serieMensual: Record<string, { valor_alfanumerico?: string }> | undefined
 ): RainfallMonthlyPoint[] {
@@ -115,47 +101,27 @@ export function parseMonthlySeries(
     .sort((a, b) => a.month - b.month)
 }
 
-export function parseDaily30DaySeries(
-  data: Siata30DayRainResponse
-): RainfallDailyPoint[] {
-  const times = data.info?.Tiempo ?? []
-  const values = data.info?.pluvio_1 ?? []
-  if (times.length === 0 || values.length === 0) return []
+function parsePeriods(
+  descripcion: Record<string, { valor_alfanumerico?: string }> | undefined
+): RainfallPeriods | null {
+  const rain24h = getAttributeValue(descripcion, "D_24_H")
+  const rain72h = getAttributeValue(descripcion, "D_72_H")
+  const rain30d = getAttributeValue(descripcion, "D_30_D")
 
-  const length = Math.min(times.length, values.length)
+  if (!rain24h && !rain72h && !rain30d) return null
 
-  return Array.from({ length }, (_, index) => {
-    const dateIso = times[index].slice(0, 10)
-    const { label, shortLabel } = formatDailyLabel(dateIso)
-    return {
-      date: dateIso,
-      label,
-      shortLabel,
-      rainMm: values[index] ?? 0,
-    }
-  })
+  return {
+    rainMm24h: parseMm(rain24h ?? "0"),
+    rainMm72h: parseMm(rain72h ?? "0"),
+    rainMm30d: parseMm(rain30d ?? "0"),
+  }
 }
 
 export function parseRainfallData(
-  data: SiataRainLayerResponse,
-  daily: RainfallDailyPoint[] = [],
-  stationName?: string
+  data: SiataRainLayerResponse
 ): RainfallData | null {
   const sensor = getUrraoSensor(data)
-  if (!sensor?.atributos) {
-    if (daily.length === 0) return null
-
-    return {
-      location: {
-        municipality: URRAO_MUNICIPALITY,
-        region: "Antioquia",
-        stationName,
-      },
-      current: null,
-      monthly: [],
-      daily,
-    }
-  }
+  if (!sensor?.atributos) return null
 
   const descripcion = sensor.atributos.descripcion
   const rainRaw = getAttributeValue(descripcion, "D_5_m")
@@ -163,8 +129,10 @@ export function parseRainfallData(
     descripcion,
     "fecha_ultima_actualizacion"
   )
+  const stationCode = getAttributeValue(descripcion, "Codigo") ?? undefined
 
   const monthly = parseMonthlySeries(sensor.atributos.serie_mensual)
+  const periods = parsePeriods(descripcion)
 
   const current =
     rainRaw && updatedAtRaw
@@ -174,17 +142,17 @@ export function parseRainfallData(
         }
       : null
 
-  if (!current && monthly.length === 0 && daily.length === 0) return null
+  if (!current && monthly.length === 0 && !periods) return null
 
   return {
     location: {
       municipality: URRAO_MUNICIPALITY,
       region: "Antioquia",
-      stationName,
+      stationCode,
     },
     current,
+    periods,
     monthly,
-    daily,
   }
 }
 
@@ -197,94 +165,26 @@ export function getCurrentMonthAccumulation(
   return point?.rainMm ?? monthly[monthly.length - 1]?.rainMm ?? null
 }
 
-export function getLast30DaysTotal(daily: RainfallDailyPoint[]): number {
-  return daily.reduce((sum, point) => sum + point.rainMm, 0)
-}
+export function getRecentRainStatus(periods: RainfallPeriods | null): string {
+  if (!periods) return "Datos de periodo no disponibles"
 
-export function getCurrentMonthFromDaily(daily: RainfallDailyPoint[]): number {
-  const now = new Date()
-  const month = now.getMonth()
-  const year = now.getFullYear()
-
-  return daily
-    .filter((point) => {
-      const date = new Date(`${point.date}T12:00:00`)
-      return date.getMonth() === month && date.getFullYear() === year
-    })
-    .reduce((sum, point) => sum + point.rainMm, 0)
-}
-
-export type DaysWithoutRainSummary = {
-  days: number
-  lastRainDate: string | null
-  lastRainMm: number | null
-  lastRainLabel: string | null
-}
-
-export function getDaysWithoutRain(
-  daily: RainfallDailyPoint[]
-): DaysWithoutRainSummary {
-  if (daily.length === 0) {
-    return {
-      days: 0,
-      lastRainDate: null,
-      lastRainMm: null,
-      lastRainLabel: null,
-    }
+  if (periods.rainMm24h > 0) {
+    return "Lluvia registrada en las últimas 24 horas"
   }
 
-  const sorted = [...daily].sort((a, b) => b.date.localeCompare(a.date))
-  let days = 0
-
-  for (const point of sorted) {
-    if (point.rainMm > 0) {
-      return {
-        days,
-        lastRainDate: point.date,
-        lastRainMm: point.rainMm,
-        lastRainLabel: point.label,
-      }
-    }
-    days++
+  if (periods.rainMm72h > 0) {
+    return "Sin lluvia en las últimas 24 horas"
   }
 
-  return {
-    days: sorted.length,
-    lastRainDate: null,
-    lastRainMm: null,
-    lastRainLabel: null,
-  }
-}
-
-export function getRainyDaysCount(daily: RainfallDailyPoint[]): number {
-  return daily.filter((point) => point.rainMm > 0).length
+  return "Sin lluvia en al menos 3 días"
 }
 
 export async function getRainfallData(): Promise<RainfallData | null> {
-  const [layerResult, daily30Result] = await Promise.allSettled([
-    fetchSiataRainLayer(),
-    fetchSiata30DayRain(),
-  ])
-
-  const dailyResponse =
-    daily30Result.status === "fulfilled" ? daily30Result.value : null
-  const daily = dailyResponse ? parseDaily30DaySeries(dailyResponse) : []
-  const stationName = dailyResponse?.info?.NombreEstacion
-
-  if (layerResult.status === "fulfilled" && layerResult.value) {
-    return parseRainfallData(layerResult.value, daily, stationName)
-  }
-
-  if (daily.length === 0) return null
-
-  return {
-    location: {
-      municipality: dailyResponse?.info?.Ciudad ?? URRAO_MUNICIPALITY,
-      region: "Antioquia",
-      stationName,
-    },
-    current: null,
-    monthly: [],
-    daily,
+  try {
+    const layer = await fetchSiataRainLayer()
+    if (!layer) return null
+    return parseRainfallData(layer)
+  } catch {
+    return null
   }
 }
