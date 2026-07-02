@@ -425,7 +425,7 @@ export function ChartAreaInteractive({
                 {windowStats && (
                   <>
                     <ReferenceLine
-                      y={windowStats.max}
+                      x={windowStats.maxPoint.date}
                       stroke="var(--color-chart-3)"
                       strokeDasharray="5 4"
                       strokeWidth={1.5}

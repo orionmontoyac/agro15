@@ -33,6 +33,7 @@ export default async function ProductDetailPage({
     bogota,
     chartSeries,
     lastSevenDays,
+    priceTrend,
     hasPriceData,
   } = detail
 
@@ -78,6 +79,7 @@ export default async function ProductDetailPage({
               bogota={bogota}
               chartSeries={chartSeries}
               lastSevenDays={lastSevenDays}
+              priceTrend={priceTrend}
             />
           )}
         </div>

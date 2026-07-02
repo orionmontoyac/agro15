@@ -76,59 +76,59 @@ export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
           para ver su historial y estadísticas.
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-4 px-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/10 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs md:grid-cols-3 lg:px-6 dark:*:data-[slot=card]:bg-card">
+      <div className="grid grid-cols-1 gap-3 px-4 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:px-6 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/10 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs dark:*:data-[slot=card]:bg-card">
       {kpis.map((kpi) => (
         <Link
           key={kpi.code}
           href={`/products/${kpi.code}`}
-          className="block rounded-xl transition-colors hover:ring-2 hover:ring-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="block min-w-0 rounded-xl transition-colors hover:ring-2 hover:ring-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Card className="@container/card h-full">
-            <CardHeader>
-              <CardTitle className="line-clamp-2 text-lg font-semibold leading-snug @[250px]/card:text-xl">
+            <CardHeader className="gap-2 max-sm:grid-cols-1 max-sm:[&_[data-slot=card-action]]:col-start-1 max-sm:[&_[data-slot=card-action]]:row-start-auto max-sm:[&_[data-slot=card-action]]:justify-self-start">
+              <CardTitle className="min-w-0 text-base font-semibold leading-snug break-words sm:text-lg">
                 {kpi.name}
               </CardTitle>
-              <CardDescription className="text-lg font-semibold tabular-nums text-foreground\\\">
+              <CardDescription className="text-xl font-semibold tabular-nums text-foreground">
                 {formatPrice(kpi.price)}
               </CardDescription>
               <CardAction>
-                <Badge variant="outline">
+                <Badge variant="outline" className="shrink-0">
                   <TrendIcon trendLabel={kpi.trendLabel} />
                   {formatChangePct(kpi.changePct)}
                 </Badge>
               </CardAction>
             </CardHeader>
             <CardFooter className="flex-col items-start gap-1.5 text-sm">
-              <div className="line-clamp-1 flex gap-2 font-medium">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
                 {trendFooterText(kpi.trendLabel)}{" "}
                 <TrendIcon trendLabel={kpi.trendLabel} />
               </div>
-              <div className="text-muted-foreground">
+              <div className="text-wrap text-muted-foreground">
                 {formatDate(kpi.priceDate)} · Precio SIPSA — {kpi.market}
               </div>
             </CardFooter>
           </Card>
         </Link>
       ))}
-      <Card className="@container/card">
-        <CardHeader>
+      <Card className="@container/card sm:col-span-2 md:col-span-1">
+        <CardHeader className="gap-2 max-sm:grid-cols-1 max-sm:[&_[data-slot=card-action]]:col-start-1 max-sm:[&_[data-slot=card-action]]:row-start-auto max-sm:[&_[data-slot=card-action]]:justify-self-start">
           <CardDescription>Variación promedio</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {formatChangePct(avgChangePct)}
           </CardTitle>
           <CardAction>
-            <Badge variant="outline">
+            <Badge variant="outline" className="shrink-0">
               <TrendIcon trendLabel={avgTrend} />
               {formatChangePct(avgChangePct)}
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
             Promedio de {kpis.length} productos{" "}
             <TrendIcon trendLabel={avgTrend} />
           </div>
-          <div className="text-muted-foreground">
+          <div className="text-wrap text-muted-foreground">
             Variación mensual en mercados SIPSA
           </div>
         </CardFooter>

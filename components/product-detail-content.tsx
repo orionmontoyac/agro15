@@ -5,6 +5,7 @@ import * as React from "react"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { ProductCityCards } from "@/components/product-city-cards"
 import { ProductLastSevenDays } from "@/components/product-last-seven-days"
+import { ProductPriceTrend } from "@/components/product-price-trend"
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -19,6 +20,7 @@ import type { ChartPoint } from "@/lib/sipsa/price-fetch"
 import type {
   CitySummary,
   MergedDailyPriceEntry,
+  ProductPriceTrend as ProductPriceTrendData,
 } from "@/lib/sipsa/products-data"
 
 type ProductDetailContentProps = {
@@ -27,6 +29,7 @@ type ProductDetailContentProps = {
   bogota: CitySummary | null
   chartSeries: ChartPoint[]
   lastSevenDays: MergedDailyPriceEntry[]
+  priceTrend: ProductPriceTrendData
 }
 
 export function ProductDetailContent({
@@ -35,6 +38,7 @@ export function ProductDetailContent({
   bogota,
   chartSeries,
   lastSevenDays,
+  priceTrend,
 }: ProductDetailContentProps) {
   const [municipalityFilter, setMunicipalityFilter] =
     React.useState<MunicipalityFilter>(MEDELLIN_CODE)
@@ -90,6 +94,12 @@ export function ProductDetailContent({
         hideProductSelector
         defaultProductCode={product.code}
         municipalityFilter={municipalityFilter}
+      />
+
+      <ProductPriceTrend
+        trend={priceTrend}
+        showMedellin={showMedellin}
+        showBogota={showBogota}
       />
     </div>
   )

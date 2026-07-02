@@ -2,6 +2,10 @@ import { createClient } from "@/lib/supabase/server"
 
 import { BOGOTA_CODE, MEDELLIN_CODE } from "./constants"
 import {
+  buildProductPriceTrend,
+  type ProductPriceTrend,
+} from "./price-trend"
+import {
   buildChartSeries,
   computeChangePct,
   computeTrend,
@@ -34,6 +38,8 @@ export type CitySummary = {
   lastDate: string
 }
 
+export type { ProductPriceTrend, CityPriceTrendInsight } from "./price-trend"
+
 export type MergedDailyPriceEntry = {
   date: string
   medellin: number | null
@@ -46,6 +52,7 @@ export type ProductDetail = {
   bogota: CitySummary | null
   chartSeries: ChartPoint[]
   lastSevenDays: MergedDailyPriceEntry[]
+  priceTrend: ProductPriceTrend
   hasPriceData: boolean
 }
 
@@ -223,6 +230,7 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
   const bogota = buildCitySummary(rows, code, BOGOTA_CODE, "Bogotá")
   const chartSeries = buildChartSeries(rows, code)
   const lastSevenDays = buildLastSevenMerged(rows, code)
+  const priceTrend = buildProductPriceTrend(lastSevenDays)
 
   return {
     product: {
@@ -234,6 +242,7 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
     bogota,
     chartSeries,
     lastSevenDays,
+    priceTrend,
     hasPriceData,
   }
 }
