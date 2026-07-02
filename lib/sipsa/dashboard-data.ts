@@ -1,4 +1,4 @@
-import { getProductsList } from "./products-data"
+import { getProductsList, type RecentPricePoint } from "./products-data"
 
 export type KpiCard = {
   code: string
@@ -8,6 +8,7 @@ export type KpiCard = {
   market: string
   changePct: number | null
   trendLabel: string
+  recentPrices: RecentPricePoint[]
 }
 
 export function buildAvgChangePct(kpis: KpiCard[]): number | null {
@@ -33,6 +34,7 @@ export async function getDashboardData() {
       market: product.medellinPrice !== null ? "Medellín" : "Bogotá",
       changePct: product.changePct,
       trendLabel: product.trendLabel,
+      recentPrices: product.recentPrices,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "es"))
 

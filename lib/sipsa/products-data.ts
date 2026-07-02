@@ -18,6 +18,11 @@ import {
   type RawPriceRow,
 } from "./price-fetch"
 
+export type RecentPricePoint = {
+  date: string
+  price: number
+}
+
 export type ProductListRow = {
   id: number
   code: string
@@ -28,6 +33,7 @@ export type ProductListRow = {
   trendLabel: string
   lastDate: string | null
   displayPriceDate: string | null
+  recentPrices: RecentPricePoint[]
 }
 
 export type CitySummary = {
@@ -122,6 +128,26 @@ function buildLastSevenMerged(
     .reverse()
 }
 
+function buildRecentPricesForCity(
+  rows: RawPriceRow[],
+  productCode: string,
+  municipalityCode: string,
+  limit = 30
+): RecentPricePoint[] {
+  return rows
+    .filter(
+      (row) =>
+        row.sipsa_products?.product_code === productCode &&
+        row.sipsa_municipalities?.municipality_code === municipalityCode
+    )
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-limit)
+    .map((row) => ({
+      date: row.date,
+      price: Number(row.price),
+    }))
+}
+
 function aggregateProductListRow(
   product: { id: number; product_code: string; product_name: string },
   rows: RawPriceRow[]
@@ -154,6 +180,14 @@ function aggregateProductListRow(
       ? dates.sort((a, b) => b.localeCompare(a))[0]
       : null
 
+  const primaryMunicipalityCode =
+    medellin != null ? MEDELLIN_CODE : BOGOTA_CODE
+  const recentPrices = buildRecentPricesForCity(
+    rows,
+    code,
+    primaryMunicipalityCode
+  )
+
   return {
     id: product.id,
     code,
@@ -164,6 +198,7 @@ function aggregateProductListRow(
     trendLabel,
     lastDate,
     displayPriceDate: medellin?.date ?? bogota?.date ?? null,
+    recentPrices,
   }
 }
 

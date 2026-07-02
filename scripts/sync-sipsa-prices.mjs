@@ -16,19 +16,14 @@
  *   - npm run sync:sipsa-catalog (catalog FK rows must exist)
  */
 
-import {
-  fetchSipsaProductPrices,
-  formatApiDate,
-} from './lib/sipsa-fetch.mjs'
 import { createSupabaseAdmin } from './lib/supabase-admin.mjs'
-
-const DEFAULT_DAYS = 30
-const CHUNK_BY_MONTH_AFTER_DAYS = 90
-const UPSERT_BATCH_SIZE = 500
-const LOCATIONS = [
-  { label: 'Medellín', department_code: '05', municipality_code: '05001' },
-  { label: 'Bogotá', department_code: '11', municipality_code: '11001' },
-]
+import {
+  DEFAULT_DAYS,
+  getDateRange,
+  getDateRangeFromYears,
+  syncProductPrices,
+  syncProductPricesUpdate,
+} from './lib/sync-sipsa-prices-core.mjs'
 
 function parseArgs(argv) {
   const args = argv.slice(2)
@@ -100,221 +95,6 @@ function printUsage() {
   console.log('  npm run sync:sipsa-prices -- 113 --years 3    # Gulupa')
 }
 
-function getDateRange(days) {
-  const end = new Date()
-  const start = new Date()
-  start.setDate(start.getDate() - days)
-  return buildRange(start, end, `${days} days`)
-}
-
-function getDateRangeFromYears(years) {
-  const end = new Date()
-  const start = new Date(end)
-  start.setFullYear(start.getFullYear() - years)
-  return buildRange(start, end, `${years} year(s)`)
-}
-
-function buildRange(start, end, label) {
-  return {
-    startDate: formatApiDate(start),
-    endDate: formatApiDate(end),
-    startIso: start.toISOString().slice(0, 10),
-    endIso: end.toISOString().slice(0, 10),
-    spanDays: Math.ceil((end - start) / (1000 * 60 * 60 * 24)),
-    label,
-  }
-}
-
-function todayAtNoon() {
-  const date = new Date()
-  date.setHours(12, 0, 0, 0)
-  return date
-}
-
-function getUpdateDateRange(lastDateIso) {
-  const end = todayAtNoon()
-
-  if (!lastDateIso) {
-    return {
-      ...getDateRange(DEFAULT_DAYS),
-      noExistingData: true,
-    }
-  }
-
-  const start = new Date(`${lastDateIso}T12:00:00`)
-  start.setDate(start.getDate() + 1)
-
-  const startIso = start.toISOString().slice(0, 10)
-  const endIso = end.toISOString().slice(0, 10)
-
-  if (startIso > endIso) {
-    return { upToDate: true, lastDateIso }
-  }
-
-  return {
-    ...buildRange(start, end, `update after ${lastDateIso}`),
-    lastDateIso,
-  }
-}
-
-function buildMonthlyChunks(range) {
-  if (range.spanDays <= CHUNK_BY_MONTH_AFTER_DAYS) {
-    return [
-      {
-        startDate: range.startDate,
-        endDate: range.endDate,
-        label: `${range.startIso} → ${range.endIso}`,
-      },
-    ]
-  }
-
-  const chunks = []
-  const end = new Date(`${range.endIso}T12:00:00`)
-  let cursor = new Date(`${range.startIso}T12:00:00`)
-
-  while (cursor <= end) {
-    const monthEnd = new Date(
-      cursor.getFullYear(),
-      cursor.getMonth() + 1,
-      0,
-      12
-    )
-    const chunkEnd = monthEnd > end ? end : monthEnd
-
-    chunks.push({
-      startDate: formatApiDate(cursor),
-      endDate: formatApiDate(chunkEnd),
-      label: cursor.toISOString().slice(0, 7),
-    })
-
-    cursor = new Date(chunkEnd)
-    cursor.setDate(cursor.getDate() + 1)
-  }
-
-  return chunks
-}
-
-async function fetchPricesForLocation(location, productCode, range) {
-  const chunks = buildMonthlyChunks(range)
-  const allRecords = []
-
-  for (const chunk of chunks) {
-    if (chunks.length > 1) {
-      console.log(`  Chunk ${chunk.label} (${chunk.startDate}–${chunk.endDate})...`)
-    }
-
-    const records = await fetchSipsaProductPrices({
-      departmentCode: location.department_code,
-      municipalityCode: location.municipality_code,
-      productCode,
-      startDate: chunk.startDate,
-      endDate: chunk.endDate,
-    })
-
-    allRecords.push(...records)
-
-    if (chunks.length > 1) {
-      console.log(`    ${records.length} record(s)`)
-    }
-  }
-
-  return allRecords
-}
-
-async function upsertPriceRows(supabase, rows) {
-  for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
-    const batch = rows.slice(i, i + UPSERT_BATCH_SIZE)
-    const { error } = await supabase.from('sipsa_product_prices').upsert(batch, {
-      onConflict: 'product_id,municipality_id,date',
-    })
-
-    if (error) {
-      throw new Error(error.message)
-    }
-  }
-}
-
-function mapPriceRecords(records, productId, municipalityId, departmentId) {
-  const fetchTimestamp = new Date().toISOString()
-  const seenDates = new Set()
-  const rows = []
-
-  for (const record of records) {
-    const date = record.Date
-    if (!date || seenDates.has(date)) continue
-
-    const price = Number(record.PROM_DIARIO)
-    if (!Number.isFinite(price)) continue
-
-    seenDates.add(date)
-    rows.push({
-      product_id: productId,
-      municipality_id: municipalityId,
-      department_id: departmentId,
-      price,
-      date,
-      fetch_timestamp: fetchTimestamp,
-    })
-  }
-
-  return rows
-}
-
-async function getLatestPriceDate(supabase, productId, municipalityId) {
-  const { data, error } = await supabase
-    .from('sipsa_product_prices')
-    .select('date')
-    .eq('product_id', productId)
-    .eq('municipality_id', municipalityId)
-    .order('date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) {
-    throw new Error(`Failed to load latest price date: ${error.message}`)
-  }
-
-  return data?.date ?? null
-}
-
-async function loadCatalogIds(supabase, productCode) {
-  const { data: product, error: productError } = await supabase
-    .from('sipsa_products')
-    .select('id, product_code, product_name')
-    .eq('product_code', productCode)
-    .single()
-
-  if (productError || !product) {
-    throw new Error(
-      `Product ${productCode} not found in Supabase. Run npm run sync:sipsa-catalog first.`
-    )
-  }
-
-  const municipalityCodes = LOCATIONS.map((loc) => loc.municipality_code)
-  const { data: municipalities, error: munError } = await supabase
-    .from('sipsa_municipalities')
-    .select('id, municipality_code, municipality_name, department_id')
-    .in('municipality_code', municipalityCodes)
-
-  if (munError) {
-    throw new Error(`Failed to load municipalities: ${munError.message}`)
-  }
-
-  const munByCode = new Map(
-    (municipalities ?? []).map((row) => [row.municipality_code, row])
-  )
-
-  for (const loc of LOCATIONS) {
-    if (!munByCode.has(loc.municipality_code)) {
-      throw new Error(
-        `Municipality ${loc.municipality_code} not found. Run npm run sync:sipsa-catalog first.`
-      )
-    }
-  }
-
-  return { product, munByCode }
-}
-
 async function main() {
   const { productCode, update, range: fixedRange, years } = parseArgs(process.argv)
   const backfillRange =
@@ -333,95 +113,35 @@ async function main() {
   }
 
   const supabase = createSupabaseAdmin()
-  const { product, munByCode } = await loadCatalogIds(supabase, productCode)
+  const log = (message) => console.log(message)
 
-  console.log(`Product: ${product.product_code} — ${product.product_name}\n`)
+  const result = update
+    ? await syncProductPricesUpdate(supabase, productCode, { log })
+    : await syncProductPrices(supabase, productCode, {
+        range: backfillRange ?? fixedRange,
+        log,
+      })
 
-  const results = []
-
-  for (const location of LOCATIONS) {
-    console.log(`Fetching ${location.label} (${location.municipality_code})...`)
-
-    const municipality = munByCode.get(location.municipality_code)
-
-    let range = backfillRange ?? fixedRange
-    if (update) {
-      const lastDate = await getLatestPriceDate(
-        supabase,
-        product.id,
-        municipality.id
-      )
-      const updateRange = getUpdateDateRange(lastDate)
-
-      if (updateRange.upToDate) {
-        console.log(`  Already up to date (latest stored: ${updateRange.lastDateIso})\n`)
-        results.push({
-          location,
-          count: 0,
-          latest: { date: updateRange.lastDateIso },
-          skipped: true,
-        })
-        continue
-      }
-
-      range = updateRange
-
-      if (updateRange.noExistingData) {
-        console.log(
-          `  No stored prices yet — fetching last ${DEFAULT_DAYS} days (${range.startIso} → ${range.endIso})`
-        )
-      } else {
-        console.log(
-          `  Last stored: ${updateRange.lastDateIso} — fetching ${range.startIso} → ${range.endIso}`
-        )
-      }
-    }
-
-    const records = await fetchPricesForLocation(location, productCode, range)
-
-    const rows = mapPriceRecords(
-      records,
-      product.id,
-      municipality.id,
-      municipality.department_id
-    )
-
-    if (rows.length === 0) {
-      console.log(`  No price rows returned for ${location.label}\n`)
-      results.push({ location, count: 0, latest: null })
-      continue
-    }
-
-    await upsertPriceRows(supabase, rows)
-
-    const latest = rows.reduce((best, row) =>
-      row.date > best.date ? row : best
-    )
-
-    console.log(`  Upserted ${rows.length} price row(s)`)
-    console.log(`  Latest: ${latest.date} — $${latest.price}/kg\n`)
-
-    results.push({ location, count: rows.length, latest })
-  }
-
-  const total = results.reduce((sum, r) => sum + r.count, 0)
-
-  console.log('=== Summary ===')
-  console.log(`Product: ${product.product_name} (${product.product_code})`)
-  console.log(`Total price rows upserted: ${total}`)
-  for (const { location, count, latest, skipped } of results) {
-    if (latest) {
+  console.log('\n=== Summary ===')
+  console.log(`Product: ${result.productName} (${result.productCode})`)
+  console.log(`Total price rows upserted: ${result.totalRows}`)
+  for (const {
+    location,
+    count,
+    latestDate,
+    latestPrice,
+    skipped,
+  } of result.locations) {
+    if (latestDate) {
       const suffix =
-        latest.price != null
-          ? ` @ $${latest.price}/kg`
+        latestPrice != null
+          ? ` @ $${latestPrice}/kg`
           : skipped
             ? ' (up to date)'
             : ''
-      console.log(
-        `  ${location.label}: ${count} rows, latest ${latest.date}${suffix}`
-      )
+      console.log(`  ${location}: ${count} rows, latest ${latestDate}${suffix}`)
     } else {
-      console.log(`  ${location.label}: no data`)
+      console.log(`  ${location}: no data`)
     }
   }
 

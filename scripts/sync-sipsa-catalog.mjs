@@ -16,11 +16,11 @@ import {
   fetchSipsaMunicipalitiesByDepartment,
   fetchSipsaProductsByCity,
 } from './lib/sipsa-fetch.mjs'
+import { AGRO15_SYNC_PRODUCT_CODES } from './lib/agro15-products.mjs'
 import { createSupabaseAdmin } from './lib/supabase-admin.mjs'
 
 const TRACKED_DEPARTMENTS = ['05', '11']
 const TRACKED_MUNICIPALITIES = ['05001', '11001']
-const AGRO15_PRODUCT_CODES = ['106', '46', '113']
 
 async function upsertDepartments(supabase) {
   const allDepartments = await fetchSipsaDepartments()
@@ -168,7 +168,7 @@ async function main() {
   }
 
   console.log('\nAgro15 fruit products:')
-  for (const code of AGRO15_PRODUCT_CODES) {
+  for (const code of AGRO15_SYNC_PRODUCT_CODES) {
     const product = products.find((row) => row.product_code === code)
     if (product) {
       console.log(`  ${code} — ${product.product_name}`)
