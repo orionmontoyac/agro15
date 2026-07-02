@@ -5,6 +5,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { getContextDateLabel } from "@/lib/sipsa/date-labels"
 import type { MergedDailyPriceEntry } from "@/lib/sipsa/products-data"
 
 function formatPrice(price: number): string {
@@ -15,52 +16,6 @@ function formatPrice(price: number): string {
       maximumFractionDigits: 0,
     }).format(price) + "/kg"
   )
-}
-
-function parseDate(date: string): Date {
-  return new Date(`${date}T12:00:00`)
-}
-
-function toLocalDateIso(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
-
-function formatShortDate(date: string): string {
-  const d = parseDate(date)
-  const month = d.toLocaleDateString("es-CO", { month: "long" })
-  const monthLabel = month.charAt(0).toUpperCase() + month.slice(1)
-  return `${d.getDate()} ${monthLabel}`
-}
-
-function getContextDateLabel(date: string): {
-  primary: string
-  secondary: string
-} {
-  const todayIso = toLocalDateIso(new Date())
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayIso = toLocalDateIso(yesterday)
-
-  if (date === todayIso) {
-    return { primary: "HOY", secondary: formatDayName(date) }
-  }
-
-  if (date === yesterdayIso) {
-    return { primary: "Ayer", secondary: formatDayName(date) }
-  }
-
-  return {
-    primary: formatShortDate(date),
-    secondary: formatDayName(date),
-  }
-}
-
-function formatDayName(date: string): string {
-  const name = parseDate(date).toLocaleDateString("es-CO", { weekday: "long" })
-  return name.charAt(0).toUpperCase() + name.slice(1)
 }
 
 function priceColorClass(

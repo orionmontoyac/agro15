@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "sync:sipsa-catalog": "node --env-file=.env.local scripts/sync-sipsa-catalog.mjs",
     "sync:sipsa-prices": "node --env-file=.env.local scripts/sync-sipsa-prices.mjs",
+    "sync:sipsa-prices-all-update": "node --env-file=.env.local scripts/run-sync-all-update.mjs",
     "sync:sipsa-prices-granadilla": "node --env-file=.env.local scripts/sync-sipsa-prices.mjs 106"
   },
   "dependencies": {
