@@ -1,0 +1,96 @@
+"use client"
+
+import * as React from "react"
+
+import { ChartAreaInteractive } from "@/components/chart-area-interactive"
+import { ProductCityCards } from "@/components/product-city-cards"
+import { ProductLastSevenDays } from "@/components/product-last-seven-days"
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group"
+import {
+  BOGOTA_CODE,
+  MEDELLIN_CODE,
+  MUNICIPALITY_FILTER_OPTIONS,
+  type MunicipalityFilter,
+} from "@/lib/sipsa/constants"
+import type { ChartPoint } from "@/lib/sipsa/price-fetch"
+import type {
+  CitySummary,
+  MergedDailyPriceEntry,
+} from "@/lib/sipsa/products-data"
+
+type ProductDetailContentProps = {
+  product: { code: string; name: string }
+  medellin: CitySummary | null
+  bogota: CitySummary | null
+  chartSeries: ChartPoint[]
+  lastSevenDays: MergedDailyPriceEntry[]
+}
+
+export function ProductDetailContent({
+  product,
+  medellin,
+  bogota,
+  chartSeries,
+  lastSevenDays,
+}: ProductDetailContentProps) {
+  const [municipalityFilter, setMunicipalityFilter] =
+    React.useState<MunicipalityFilter>(MEDELLIN_CODE)
+
+  const showMedellin =
+    municipalityFilter === "all" || municipalityFilter === MEDELLIN_CODE
+  const showBogota =
+    municipalityFilter === "all" || municipalityFilter === BOGOTA_CODE
+
+  return (
+    <div className="flex flex-col gap-4 md:gap-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold">Filtrar por mercado</h3>
+          <p className="text-sm text-muted-foreground">
+            Muestra precios de un municipio o de todos
+          </p>
+        </div>
+        <ToggleGroup
+          multiple={false}
+          value={municipalityFilter ? [municipalityFilter] : []}
+          onValueChange={(value) => {
+            setMunicipalityFilter((value[0] ?? MEDELLIN_CODE) as MunicipalityFilter)
+          }}
+          variant="outline"
+          className="w-full flex-wrap sm:w-auto *:data-[slot=toggle-group-item]:px-3!"
+          aria-label="Filtrar por mercado"
+        >
+          {MUNICIPALITY_FILTER_OPTIONS.map((option) => (
+            <ToggleGroupItem key={option.value} value={option.value}>
+              {option.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+
+      <ProductCityCards
+        medellin={medellin}
+        bogota={bogota}
+        showMedellin={showMedellin}
+        showBogota={showBogota}
+      />
+
+      <ProductLastSevenDays
+        entries={lastSevenDays}
+        showMedellin={showMedellin}
+        showBogota={showBogota}
+      />
+
+      <ChartAreaInteractive
+        dataByProduct={{ [product.code]: chartSeries }}
+        products={[{ code: product.code, name: product.name }]}
+        hideProductSelector
+        defaultProductCode={product.code}
+        municipalityFilter={municipalityFilter}
+      />
+    </div>
+  )
+}

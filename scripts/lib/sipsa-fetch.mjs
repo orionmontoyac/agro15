@@ -128,3 +128,66 @@ export async function fetchSipsaProductsByCity(municipalityCode) {
     product_name: row.NOM_ART,
   }))
 }
+
+export function formatApiDate(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}${month}${day}`
+}
+
+export function buildArchivoCsv(
+  departmentCode,
+  municipalityCode,
+  productCode
+) {
+  return `${departmentCode}${municipalityCode}${productCode}`
+}
+
+export async function fetchSipsaProductPrices(
+  { departmentCode, municipalityCode, productCode, startDate, endDate },
+  maxRetries = 3
+) {
+  const payload = {
+    depcod: departmentCode,
+    codmun: municipalityCode,
+    codart: productCode,
+    archivoCsv: buildArchivoCsv(
+      departmentCode,
+      municipalityCode,
+      productCode
+    ),
+    fechaIni: startDate,
+    fechaFin: endDate,
+    tipoReporte: 'day',
+  }
+
+  let lastError = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt))
+    }
+
+    try {
+      const response = await sipsaFetch('/selectAllInfoProduct/', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '')
+        throw new Error(
+          `SIPSA API error ${response.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+        )
+      }
+
+      const data = await response.json()
+      return Array.isArray(data) ? data : []
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('SIPSA fetch failed')
+    }
+  }
+
+  throw lastError ?? new Error('SIPSA fetch failed')
+}

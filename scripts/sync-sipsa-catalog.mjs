@@ -43,7 +43,11 @@ async function upsertDepartments(supabase) {
   )
 
   if (error) {
-    throw new Error(`Failed to upsert departments: ${error.message}`)
+    const hint =
+      error.message.includes('<!DOCTYPE html>') || error.message.includes('<html')
+        ? ' Check SUPABASE_URL is https://<project-ref>.supabase.co (not the dashboard URL).'
+        : ''
+    throw new Error(`Failed to upsert departments: ${error.message.slice(0, 200)}${hint}`)
   }
 
   const { data: rows, error: selectError } = await supabase
