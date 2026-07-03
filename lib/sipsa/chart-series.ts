@@ -63,10 +63,6 @@ function fillSeriesKey(
         const ratio = (time - previous.time) / (next.time - previous.time)
         filled.set(date, previous.value + ratio * (next.value - previous.value))
       }
-    } else if (previous) {
-      filled.set(date, previous.value)
-    } else if (next) {
-      filled.set(date, next.value)
     }
   }
 
@@ -81,8 +77,19 @@ export function fillChartSeriesGaps(
 ): ChartPoint[] {
   if (points.length === 0) return []
 
+  const lastObserved = points.reduce(
+    (latest, point) => (point.date > latest ? point.date : latest),
+    points[0].date
+  )
   const start = rangeStart <= rangeEnd ? rangeStart : points[0].date
-  const end = rangeEnd >= start ? rangeEnd : points[points.length - 1].date
+  const end =
+    rangeEnd >= start
+      ? rangeEnd <= lastObserved
+        ? rangeEnd
+        : lastObserved
+      : points[points.length - 1].date
+  if (start > end) return [...points].sort((a, b) => a.date.localeCompare(b.date))
+
   const allDates = enumerateDates(start, end)
 
   const medellin = fillSeriesKey(points, "medellin", allDates)
@@ -97,8 +104,11 @@ export function fillChartSeriesGaps(
     .filter((point) => point.medellin != null || point.bogota != null)
 }
 
-export function getChartRangeStartIso(days: number): string {
-  const date = new Date()
+export function getChartRangeStartIso(
+  days: number,
+  anchorEndIso = getChartRangeEndIso()
+): string {
+  const date = new Date(`${anchorEndIso}T12:00:00`)
   date.setDate(date.getDate() - days)
   return date.toISOString().slice(0, 10)
 }

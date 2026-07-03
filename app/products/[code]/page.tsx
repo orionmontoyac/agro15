@@ -78,7 +78,10 @@ export default async function ProductDetailPage({
           </Breadcrumb>
 
           <div>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              {product.name}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               Código SIPSA: {product.code}
             </p>
           </div>

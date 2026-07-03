@@ -88,6 +88,24 @@ function formatChartAxisPrice(value: number): string {
   }).format(value)
 }
 
+/** Shorter Y-axis labels for narrow screens (e.g. $9,4k). */
+function formatCompactChartAxisPrice(value: number): string {
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000) {
+    const millions = value / 1_000_000
+    const text =
+      millions % 1 === 0 ? String(millions) : millions.toFixed(1).replace(".", ",")
+    return `$${text}M`
+  }
+  if (abs >= 1_000) {
+    const thousands = value / 1_000
+    const text =
+      thousands % 1 === 0 ? String(thousands) : thousands.toFixed(1).replace(".", ",")
+    return `$${text}k`
+  }
+  return `$${value}`
+}
+
 function formatFullPrice(value: number): string {
   return (
     new Intl.NumberFormat("es-CO", {
@@ -159,30 +177,41 @@ function ChartStat({
 
 type ChartAreaInteractiveProps = {
   dataByProduct: Record<string, ChartPoint[]>
-  dataByPeriod?: {
-    day: ChartPoint[]
-    week: ChartPoint[]
-    month: ChartPoint[]
-  }
   products: { code: string; name: string }[]
   hideProductSelector?: boolean
   defaultProductCode?: string
   municipalityFilter?: MunicipalityFilter
 }
 
-type PeriodType = "day" | "week" | "month"
+type TimeRange = "7d" | "30d" | "1y" | "3y" | "5y"
+
+const TIME_RANGE_DAYS: Record<TimeRange, number> = {
+  "7d": 7,
+  "30d": 30,
+  "1y": 365,
+  "3y": 365 * 3,
+  "5y": 365 * 5,
+}
+
+const TIME_RANGE_LABELS: Record<TimeRange, string> = {
+  "7d": "Últimos 7 días",
+  "30d": "Últimos 30 días",
+  "1y": "Último año",
+  "3y": "Últimos 3 años",
+  "5y": "Últimos 5 años",
+}
+
+const TIME_RANGE_OPTIONS: TimeRange[] = ["7d", "30d", "1y", "3y", "5y"]
 
 export function ChartAreaInteractive({
   dataByProduct,
-  dataByPeriod,
   products,
   hideProductSelector = false,
   defaultProductCode = DEFAULT_PRODUCT_CODE,
   municipalityFilter = "all",
 }: ChartAreaInteractiveProps) {
   const isMobile = useIsMobile()
-  const [timeRange, setTimeRange] = React.useState("90d")
-  const [periodType, setPeriodType] = React.useState<PeriodType>("day")
+  const [timeRange, setTimeRange] = React.useState<TimeRange>("30d")
   const [productCode, setProductCode] = React.useState(defaultProductCode)
   const chartId = React.useId().replace(/:/g, "")
 
@@ -190,21 +219,11 @@ export function ChartAreaInteractive({
     setProductCode(defaultProductCode)
   }, [defaultProductCode])
 
-  React.useEffect(() => {
-    if (isMobile) {
-      setTimeRange("7d")
-    }
-  }, [isMobile])
+  const chartData = dataByProduct[productCode] ?? []
 
-  const chartData =
-    dataByPeriod && hideProductSelector
-      ? dataByPeriod[periodType]
-      : dataByProduct[productCode] ?? []
-
-  const daysInRange =
-    timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
-  const rangeStartIso = getChartRangeStartIso(daysInRange)
+  const daysInRange = TIME_RANGE_DAYS[timeRange]
   const rangeEndIso = getChartRangeEndIso()
+  const rangeStartIso = getChartRangeStartIso(daysInRange, rangeEndIso)
 
   const filteredData = chartData.filter(
     (item) => item.date >= rangeStartIso && item.date <= rangeEndIso
@@ -230,14 +249,24 @@ export function ChartAreaInteractive({
   const windowStats = computeWindowStats(filteredData, activeSeries)
   const showLegend = activeSeries.length > 1
 
-  const timeRangeLabel =
-    timeRange === "7d"
-      ? "7 días"
-      : timeRange === "30d"
-        ? "30 días"
-        : "3 meses"
+  const timeRangeLabel = TIME_RANGE_LABELS[timeRange]
 
-  const showMinMaxBand = periodType === "day"
+  const formatXAxisTick = React.useCallback(
+    (value: string) => {
+      const date = new Date(value)
+      if (timeRange === "3y" || timeRange === "5y") {
+        return date.toLocaleDateString("es-CO", {
+          month: "short",
+          year: "2-digit",
+        })
+      }
+      return date.toLocaleDateString("es-CO", {
+        month: "short",
+        day: "numeric",
+      })
+    },
+    [timeRange]
+  )
 
   return (
     <Card className="@container/card bg-linear-to-t from-primary/10 to-card shadow-xs dark:bg-card">
@@ -245,29 +274,13 @@ export function ChartAreaInteractive({
         <CardTitle>Precios históricos</CardTitle>
         <CardDescription>
           <span className="hidden @[540px]/card:block">
-            Evolución de precios — {selectedProduct} · Precio en COP/kg
-            {periodType !== "day" ? " (promedio del período)" : ""}
+            Evolución de precios — {selectedProduct} · Precio diario en COP/kg
           </span>
           <span className="@[540px]/card:hidden">
             {selectedProduct} · COP/kg
           </span>
         </CardDescription>
         <CardAction className="flex flex-wrap items-center gap-2">
-          {dataByPeriod && hideProductSelector ? (
-            <ToggleGroup
-              multiple={false}
-              value={[periodType]}
-              onValueChange={(value) => {
-                setPeriodType((value[0] ?? "day") as PeriodType)
-              }}
-              variant="outline"
-              className="*:data-[slot=toggle-group-item]:px-3!"
-            >
-              <ToggleGroupItem value="day">Diario</ToggleGroupItem>
-              <ToggleGroupItem value="week">Semanal</ToggleGroupItem>
-              <ToggleGroupItem value="month">Mensual</ToggleGroupItem>
-            </ToggleGroup>
-          ) : null}
           {!hideProductSelector && (
             <Select
               value={productCode}
@@ -297,40 +310,38 @@ export function ChartAreaInteractive({
             multiple={false}
             value={timeRange ? [timeRange] : []}
             onValueChange={(value) => {
-              setTimeRange(value[0] ?? "90d")
+              setTimeRange((value[0] ?? "1y") as TimeRange)
             }}
             variant="outline"
-            className="hidden *:data-[slot=toggle-group-item]:px-4! @[767px]/card:flex"
+            className="hidden flex-wrap *:data-[slot=toggle-group-item]:px-3! @[767px]/card:flex"
           >
-            <ToggleGroupItem value="90d">Últimos 3 meses</ToggleGroupItem>
-            <ToggleGroupItem value="30d">Últimos 30 días</ToggleGroupItem>
-            <ToggleGroupItem value="7d">Últimos 7 días</ToggleGroupItem>
+            {TIME_RANGE_OPTIONS.map((option) => (
+              <ToggleGroupItem key={option} value={option}>
+                {TIME_RANGE_LABELS[option]}
+              </ToggleGroupItem>
+            ))}
           </ToggleGroup>
           <Select
             value={timeRange}
             onValueChange={(value) => {
               if (value !== null) {
-                setTimeRange(value)
+                setTimeRange(value as TimeRange)
               }
             }}
           >
             <SelectTrigger
-              className="flex w-40 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate @[767px]/card:hidden"
+              className="flex w-36 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate @[767px]/card:hidden"
               size="sm"
               aria-label="Seleccionar período"
             >
-              <SelectValue placeholder="Últimos 3 meses" />
+              <SelectValue placeholder="Últimos 30 días" />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
-              <SelectItem value="90d" className="rounded-lg">
-                Últimos 3 meses
-              </SelectItem>
-              <SelectItem value="30d" className="rounded-lg">
-                Últimos 30 días
-              </SelectItem>
-              <SelectItem value="7d" className="rounded-lg">
-                Últimos 7 días
-              </SelectItem>
+              {TIME_RANGE_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option} className="rounded-lg">
+                  {TIME_RANGE_LABELS[option]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </CardAction>
@@ -348,7 +359,12 @@ export function ChartAreaInteractive({
             >
               <AreaChart
                 data={chartDisplayData}
-                margin={{ top: 16, right: 12, left: 8, bottom: 8 }}
+                margin={{
+                  top: 16,
+                  right: isMobile ? 4 : 12,
+                  left: isMobile ? 0 : 8,
+                  bottom: 8,
+                }}
               >
                 <defs>
                   <linearGradient
@@ -401,13 +417,7 @@ export function ChartAreaInteractive({
                   tickMargin={8}
                   minTickGap={32}
                   tick={{ fill: "var(--foreground)", opacity: 0.65, fontSize: 12 }}
-                  tickFormatter={(value) => {
-                    const date = new Date(value)
-                    return date.toLocaleDateString("es-CO", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  }}
+                  tickFormatter={formatXAxisTick}
                   label={{
                     value: "Fecha",
                     position: "insideBottom",
@@ -418,18 +428,33 @@ export function ChartAreaInteractive({
                 <YAxis
                   tickLine={false}
                   axisLine={{ stroke: "var(--border)" }}
-                  tickMargin={8}
-                  width={72}
-                  tickFormatter={formatChartAxisPrice}
-                  tick={{ fill: "var(--foreground)", opacity: 0.65, fontSize: 12 }}
-                  label={{
-                    value: "COP/kg",
-                    angle: -90,
-                    position: "insideLeft",
-                    offset: 12,
-                    dx: -10,
-                    style: { fill: "var(--foreground)", opacity: 0.7, fontSize: 12 },
+                  tickMargin={isMobile ? 2 : 8}
+                  width={isMobile ? 36 : 72}
+                  tickCount={isMobile ? 4 : 5}
+                  tickFormatter={
+                    isMobile ? formatCompactChartAxisPrice : formatChartAxisPrice
+                  }
+                  tick={{
+                    fill: "var(--foreground)",
+                    opacity: 0.65,
+                    fontSize: isMobile ? 10 : 12,
                   }}
+                  label={
+                    isMobile
+                      ? undefined
+                      : {
+                          value: "COP/kg",
+                          angle: -90,
+                          position: "insideLeft",
+                          offset: 12,
+                          dx: -10,
+                          style: {
+                            fill: "var(--foreground)",
+                            opacity: 0.7,
+                            fontSize: 12,
+                          },
+                        }
+                  }
                 />
                 <ChartTooltip
                   cursor={{ strokeDasharray: "4 4" }}
@@ -506,7 +531,7 @@ export function ChartAreaInteractive({
                     activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
                   />
                 )}
-                {showMinMaxBand && showMedellin && (
+                {showMedellin && (
                   <>
                     <Line
                       dataKey="medellinMax"
@@ -534,7 +559,7 @@ export function ChartAreaInteractive({
                     />
                   </>
                 )}
-                {showMinMaxBand && showBogota && (
+                {showBogota && (
                   <>
                     <Line
                       dataKey="bogotaMax"

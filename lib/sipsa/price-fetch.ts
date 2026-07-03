@@ -233,6 +233,13 @@ type FetchPriceRowsOptions = {
 }
 
 const PRODUCT_ID_BATCH_SIZE = 100
+const PRICE_ROWS_PAGE_SIZE = 1000
+
+const PRICE_ROW_SELECT = `
+  date, price, price_min, price_max, daily_variation, report_type, product_id,
+  sipsa_products ( product_code, product_name ),
+  sipsa_municipalities ( municipality_code, municipality_name, market_name )
+`
 
 async function fetchPriceRowsBatch(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -240,31 +247,44 @@ async function fetchPriceRowsBatch(
 ): Promise<RawPriceRow[]> {
   const { productIds, days, reportType } = options
   const startIso = getStartDateIso(days)
+  const rows: RawPriceRow[] = []
+  let offset = 0
 
-  let query = supabase
-    .from("sipsa_product_prices")
-    .select(
-      `
-      date, price, price_min, price_max, daily_variation, report_type, product_id,
-      sipsa_products ( product_code, product_name ),
-      sipsa_municipalities ( municipality_code, municipality_name, market_name )
-    `
+  while (true) {
+    let query = supabase
+      .from("sipsa_product_prices")
+      .select(PRICE_ROW_SELECT)
+      .eq("report_type", reportType)
+      .gte("date", startIso)
+      .order("date", { ascending: true })
+      .range(offset, offset + PRICE_ROWS_PAGE_SIZE - 1)
+
+    if (productIds?.length) {
+      query = query.in("product_id", productIds)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      return rows
+    }
+
+    if (!data?.length) {
+      break
+    }
+
+    rows.push(
+      ...data.map((row) => normalizePriceRow(row as Record<string, unknown>))
     )
-    .eq("report_type", reportType)
-    .gte("date", startIso)
-    .order("date", { ascending: true })
 
-  if (productIds?.length) {
-    query = query.in("product_id", productIds)
+    if (data.length < PRICE_ROWS_PAGE_SIZE) {
+      break
+    }
+
+    offset += PRICE_ROWS_PAGE_SIZE
   }
 
-  const { data, error } = await query
-
-  if (error || !data?.length) {
-    return []
-  }
-
-  return data.map((row) => normalizePriceRow(row as Record<string, unknown>))
+  return rows
 }
 
 export async function fetchPriceRows(

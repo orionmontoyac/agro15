@@ -111,11 +111,6 @@ export function ProductDetailContent({
 
       <ChartAreaInteractive
         dataByProduct={{ [product.code]: chartSeries }}
-        dataByPeriod={{
-          day: chartSeries,
-          week: chartSeriesWeek,
-          month: chartSeriesMonth,
-        }}
         products={[{ code: product.code, name: product.name }]}
         hideProductSelector
         defaultProductCode={product.code}

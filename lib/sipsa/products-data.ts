@@ -284,7 +284,7 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
   if (!product) return null
 
   const [dailyRows, aggregateRows, supply] = await Promise.all([
-    fetchPriceRows({ productIds: [product.id], reportType: "day" }),
+    fetchPriceRows({ productIds: [product.id], reportType: "day", days: 365 * 5 }),
     fetchPriceRows({ productIds: [product.id], days: 730, reportType: "week" }).then(
       async (weekRows) => {
         const monthRows = await fetchPriceRows({
