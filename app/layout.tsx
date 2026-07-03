@@ -5,6 +5,14 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import {
+  buildOpenGraph,
+  buildTwitter,
+  DEFAULT_DESCRIPTION,
+  DEFAULT_TITLE,
+  getMetadataBase,
+  SITE_NAME,
+} from "@/lib/site-metadata"
 import { cn } from "@/lib/utils"
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'})
@@ -15,14 +23,16 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
+  metadataBase: getMetadataBase(),
   title: {
-    default: "agro15 — Precios de frutas",
-    template: "%s | agro15",
+    default: DEFAULT_TITLE,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "Consulta precios actuales e históricos de frutas en mercados agrícolas.",
+  description: DEFAULT_DESCRIPTION,
+  openGraph: buildOpenGraph(),
+  twitter: buildTwitter(),
   appleWebApp: {
-    title: "Agro15",
+    title: SITE_NAME,
   },
 }
 
@@ -33,7 +43,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="es"
       suppressHydrationWarning
       className={cn("antialiased", fontMono.variable, "font-sans", geist.variable)}
     >
