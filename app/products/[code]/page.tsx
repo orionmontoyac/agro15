@@ -50,6 +50,10 @@ export default async function ProductDetailPage({
     medellin,
     bogota,
     chartSeries,
+    chartSeriesWeek,
+    chartSeriesMonth,
+    periodSummaries,
+    supply,
     lastSevenDays,
     priceTrend,
     hasPriceData,
@@ -96,6 +100,10 @@ export default async function ProductDetailPage({
               medellin={medellin}
               bogota={bogota}
               chartSeries={chartSeries}
+              chartSeriesWeek={chartSeriesWeek}
+              chartSeriesMonth={chartSeriesMonth}
+              periodSummaries={periodSummaries}
+              supply={supply}
               lastSevenDays={lastSevenDays}
               priceTrend={priceTrend}
             />

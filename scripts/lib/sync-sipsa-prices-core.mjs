@@ -106,7 +106,13 @@ function buildMonthlyChunks(range) {
   return chunks
 }
 
-async function fetchPricesForLocation(location, productCode, range, log) {
+export async function fetchPricesForLocation(
+  location,
+  productCode,
+  range,
+  log,
+  reportType = 'day'
+) {
   const chunks = buildMonthlyChunks(range)
   const allRecords = []
 
@@ -121,6 +127,7 @@ async function fetchPricesForLocation(location, productCode, range, log) {
       productCode,
       startDate: chunk.startDate,
       endDate: chunk.endDate,
+      reportType,
     })
 
     allRecords.push(...records)
@@ -133,11 +140,11 @@ async function fetchPricesForLocation(location, productCode, range, log) {
   return allRecords
 }
 
-async function upsertPriceRows(supabase, rows) {
+export async function upsertPriceRows(supabase, rows) {
   for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
     const batch = rows.slice(i, i + UPSERT_BATCH_SIZE)
     const { error } = await supabase.from('sipsa_product_prices').upsert(batch, {
-      onConflict: 'product_id,municipality_id,date',
+      onConflict: 'product_id,municipality_id,date,report_type',
     })
 
     if (error) {
@@ -146,10 +153,23 @@ async function upsertPriceRows(supabase, rows) {
   }
 }
 
-function mapPriceRecords(records, productId, municipalityId, departmentId) {
+function optionalNumber(value) {
+  if (value == null || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export function mapPriceRecords(
+  records,
+  productId,
+  municipalityId,
+  departmentId,
+  reportType = 'day'
+) {
   const fetchTimestamp = new Date().toISOString()
   const seenDates = new Set()
   const rows = []
+  let marketName = null
 
   for (const record of records) {
     const date = record.Date
@@ -158,18 +178,39 @@ function mapPriceRecords(records, productId, municipalityId, departmentId) {
     const price = Number(record.PROM_DIARIO)
     if (!Number.isFinite(price)) continue
 
+    if (record.NOM_ABASTO && !marketName) {
+      marketName = String(record.NOM_ABASTO)
+    }
+
     seenDates.add(date)
     rows.push({
       product_id: productId,
       municipality_id: municipalityId,
       department_id: departmentId,
       price,
+      price_min: optionalNumber(record.VAL_MIN),
+      price_max: optionalNumber(record.VAL_MAX),
+      daily_variation: optionalNumber(record.VAR_DIARIA),
+      report_type: reportType,
       date,
       fetch_timestamp: fetchTimestamp,
     })
   }
 
-  return rows
+  return { rows, marketName }
+}
+
+export async function updateMarketName(supabase, municipalityId, marketName) {
+  if (!marketName) return
+
+  const { error } = await supabase
+    .from('sipsa_municipalities')
+    .update({ market_name: marketName })
+    .eq('id', municipalityId)
+
+  if (error) {
+    throw new Error(`Failed to update market name: ${error.message}`)
+  }
 }
 
 async function getLatestPriceDate(supabase, productId, municipalityId) {
@@ -178,6 +219,7 @@ async function getLatestPriceDate(supabase, productId, municipalityId) {
     .select('date')
     .eq('product_id', productId)
     .eq('municipality_id', municipalityId)
+    .eq('report_type', 'day')
     .order('date', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -189,7 +231,7 @@ async function getLatestPriceDate(supabase, productId, municipalityId) {
   return data?.date ?? null
 }
 
-async function loadCatalogIds(supabase, productCode) {
+export async function loadCatalogIds(supabase, productCode) {
   const { data: product, error: productError } = await supabase
     .from('sipsa_products')
     .select('id, product_code, product_name')
@@ -280,11 +322,12 @@ async function syncProductPricesInternal(
       log
     )
 
-    const rows = mapPriceRecords(
+    const { rows, marketName } = mapPriceRecords(
       records,
       product.id,
       municipality.id,
-      municipality.department_id
+      municipality.department_id,
+      'day'
     )
 
     if (rows.length === 0) {
@@ -298,6 +341,7 @@ async function syncProductPricesInternal(
     }
 
     await upsertPriceRows(supabase, rows)
+    await updateMarketName(supabase, municipality.id, marketName)
 
     const latest = rows.reduce((best, row) =>
       row.date > best.date ? row : best

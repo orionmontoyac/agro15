@@ -7,6 +7,7 @@ import {
 } from "./price-trend"
 import {
   buildChartSeries,
+  buildPeriodSummariesByCity,
   computeChangePct,
   computeTrend,
   fetchPriceRows,
@@ -15,8 +16,10 @@ import {
   getLatestPrice,
   getLatestPriceForCity,
   type ChartPoint,
+  type PeriodSummary,
   type RawPriceRow,
 } from "./price-fetch"
+import { getProductSupply, type ProductSupplySummary } from "./supply-data"
 
 export type RecentPricePoint = {
   date: string
@@ -29,6 +32,9 @@ export type ProductListRow = {
   name: string
   medellinPrice: number | null
   bogotaPrice: number | null
+  displayPriceMin: number | null
+  displayPriceMax: number | null
+  marketName: string | null
   changePct: number | null
   trendLabel: string
   lastDate: string | null
@@ -39,10 +45,16 @@ export type ProductListRow = {
 export type CitySummary = {
   city: string
   price: number
+  priceMin: number | null
+  priceMax: number | null
+  marketName: string | null
   changePct: number | null
   trendLabel: string
   lastDate: string
 }
+
+export type { PeriodSummary } from "./price-fetch"
+export type { ProductSupplySummary } from "./supply-data"
 
 export type { ProductPriceTrend, CityPriceTrendInsight } from "./price-trend"
 
@@ -57,6 +69,13 @@ export type ProductDetail = {
   medellin: CitySummary | null
   bogota: CitySummary | null
   chartSeries: ChartPoint[]
+  chartSeriesWeek: ChartPoint[]
+  chartSeriesMonth: ChartPoint[]
+  periodSummaries: {
+    medellin: { week: PeriodSummary | null; month: PeriodSummary | null }
+    bogota: { week: PeriodSummary | null; month: PeriodSummary | null }
+  }
+  supply: ProductSupplySummary
   lastSevenDays: MergedDailyPriceEntry[]
   priceTrend: ProductPriceTrend
   hasPriceData: boolean
@@ -84,6 +103,9 @@ function buildCitySummary(
   return {
     city: cityName,
     price: latest.price,
+    priceMin: latest.priceMin,
+    priceMax: latest.priceMax,
+    marketName: latest.marketName,
     changePct,
     trendLabel,
     lastDate: latest.date,
@@ -182,6 +204,11 @@ function aggregateProductListRow(
 
   const primaryMunicipalityCode =
     medellin != null ? MEDELLIN_CODE : BOGOTA_CODE
+  const primaryLatest = getLatestPriceForCity(
+    rows,
+    code,
+    primaryMunicipalityCode
+  )
   const recentPrices = buildRecentPricesForCity(
     rows,
     code,
@@ -194,6 +221,9 @@ function aggregateProductListRow(
     name: product.product_name,
     medellinPrice: medellin?.price ?? null,
     bogotaPrice: bogota?.price ?? null,
+    displayPriceMin: primaryLatest?.priceMin ?? null,
+    displayPriceMax: primaryLatest?.priceMax ?? null,
+    marketName: primaryLatest?.marketName ?? null,
     changePct,
     trendLabel,
     lastDate,
@@ -253,7 +283,23 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
   const product = await getProductByCode(code)
   if (!product) return null
 
-  const rows = await fetchPriceRows({ productIds: [product.id] })
+  const [dailyRows, aggregateRows, supply] = await Promise.all([
+    fetchPriceRows({ productIds: [product.id], reportType: "day" }),
+    fetchPriceRows({ productIds: [product.id], days: 730, reportType: "week" }).then(
+      async (weekRows) => {
+        const monthRows = await fetchPriceRows({
+          productIds: [product.id],
+          days: 730,
+          reportType: "month",
+        })
+        return [...weekRows, ...monthRows]
+      }
+    ),
+    getProductSupply(product.id),
+  ])
+
+  const rows = dailyRows
+  const allRows = [...dailyRows, ...aggregateRows]
   const hasPriceData = rows.length > 0
 
   const medellin = buildCitySummary(
@@ -263,7 +309,10 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
     "Medellín"
   )
   const bogota = buildCitySummary(rows, code, BOGOTA_CODE, "Bogotá")
-  const chartSeries = buildChartSeries(rows, code)
+  const chartSeries = buildChartSeries(rows, code, "day")
+  const chartSeriesWeek = buildChartSeries(allRows, code, "week")
+  const chartSeriesMonth = buildChartSeries(allRows, code, "month")
+  const periodSummaries = buildPeriodSummariesByCity(allRows, code)
   const lastSevenDays = buildLastSevenMerged(rows, code)
   const priceTrend = buildProductPriceTrend(lastSevenDays)
 
@@ -276,6 +325,10 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
     medellin,
     bogota,
     chartSeries,
+    chartSeriesWeek,
+    chartSeriesMonth,
+    periodSummaries,
+    supply,
     lastSevenDays,
     priceTrend,
     hasPriceData,

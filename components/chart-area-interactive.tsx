@@ -6,6 +6,7 @@ import {
   AreaChart,
   CartesianGrid,
   Legend,
+  Line,
   ReferenceDot,
   ReferenceLine,
   XAxis,
@@ -158,14 +159,22 @@ function ChartStat({
 
 type ChartAreaInteractiveProps = {
   dataByProduct: Record<string, ChartPoint[]>
+  dataByPeriod?: {
+    day: ChartPoint[]
+    week: ChartPoint[]
+    month: ChartPoint[]
+  }
   products: { code: string; name: string }[]
   hideProductSelector?: boolean
   defaultProductCode?: string
   municipalityFilter?: MunicipalityFilter
 }
 
+type PeriodType = "day" | "week" | "month"
+
 export function ChartAreaInteractive({
   dataByProduct,
+  dataByPeriod,
   products,
   hideProductSelector = false,
   defaultProductCode = DEFAULT_PRODUCT_CODE,
@@ -173,6 +182,7 @@ export function ChartAreaInteractive({
 }: ChartAreaInteractiveProps) {
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState("90d")
+  const [periodType, setPeriodType] = React.useState<PeriodType>("day")
   const [productCode, setProductCode] = React.useState(defaultProductCode)
   const chartId = React.useId().replace(/:/g, "")
 
@@ -186,7 +196,10 @@ export function ChartAreaInteractive({
     }
   }, [isMobile])
 
-  const chartData = dataByProduct[productCode] ?? []
+  const chartData =
+    dataByPeriod && hideProductSelector
+      ? dataByPeriod[periodType]
+      : dataByProduct[productCode] ?? []
 
   const daysInRange =
     timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 90
@@ -224,6 +237,8 @@ export function ChartAreaInteractive({
         ? "30 días"
         : "3 meses"
 
+  const showMinMaxBand = periodType === "day"
+
   return (
     <Card className="@container/card bg-linear-to-t from-primary/10 to-card shadow-xs dark:bg-card">
       <CardHeader>
@@ -231,12 +246,28 @@ export function ChartAreaInteractive({
         <CardDescription>
           <span className="hidden @[540px]/card:block">
             Evolución de precios — {selectedProduct} · Precio en COP/kg
+            {periodType !== "day" ? " (promedio del período)" : ""}
           </span>
           <span className="@[540px]/card:hidden">
             {selectedProduct} · COP/kg
           </span>
         </CardDescription>
         <CardAction className="flex flex-wrap items-center gap-2">
+          {dataByPeriod && hideProductSelector ? (
+            <ToggleGroup
+              multiple={false}
+              value={[periodType]}
+              onValueChange={(value) => {
+                setPeriodType((value[0] ?? "day") as PeriodType)
+              }}
+              variant="outline"
+              className="*:data-[slot=toggle-group-item]:px-3!"
+            >
+              <ToggleGroupItem value="day">Diario</ToggleGroupItem>
+              <ToggleGroupItem value="week">Semanal</ToggleGroupItem>
+              <ToggleGroupItem value="month">Mensual</ToggleGroupItem>
+            </ToggleGroup>
+          ) : null}
           {!hideProductSelector && (
             <Select
               value={productCode}
@@ -474,6 +505,62 @@ export function ChartAreaInteractive({
                     dot={false}
                     activeDot={{ r: 5, strokeWidth: 2, stroke: "var(--background)" }}
                   />
+                )}
+                {showMinMaxBand && showMedellin && (
+                  <>
+                    <Line
+                      dataKey="medellinMax"
+                      name="medellinMax"
+                      type="monotone"
+                      connectNulls
+                      stroke="var(--color-medellin)"
+                      strokeWidth={1}
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.45}
+                      dot={false}
+                      legendType="none"
+                    />
+                    <Line
+                      dataKey="medellinMin"
+                      name="medellinMin"
+                      type="monotone"
+                      connectNulls
+                      stroke="var(--color-medellin)"
+                      strokeWidth={1}
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.45}
+                      dot={false}
+                      legendType="none"
+                    />
+                  </>
+                )}
+                {showMinMaxBand && showBogota && (
+                  <>
+                    <Line
+                      dataKey="bogotaMax"
+                      name="bogotaMax"
+                      type="monotone"
+                      connectNulls
+                      stroke="var(--color-bogota)"
+                      strokeWidth={1}
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.45}
+                      dot={false}
+                      legendType="none"
+                    />
+                    <Line
+                      dataKey="bogotaMin"
+                      name="bogotaMin"
+                      type="monotone"
+                      connectNulls
+                      stroke="var(--color-bogota)"
+                      strokeWidth={1}
+                      strokeDasharray="4 4"
+                      strokeOpacity={0.45}
+                      dot={false}
+                      legendType="none"
+                    />
+                  </>
                 )}
               </AreaChart>
             </ChartContainer>

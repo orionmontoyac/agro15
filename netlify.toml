@@ -11,3 +11,13 @@
 
 [functions."sync-sipsa-prices"]
   schedule = "0 8,20 * * *"
+
+[functions."sync-sipsa-aggregates"]
+  schedule = "0 9 * * *"
+
+[functions."sync-sipsa-supply"]
+  schedule = "0 10 11 * *"
+  timeout = 900
+
+[functions."sync-sipsa-insumos"]
+  schedule = "0 11 12 * *"

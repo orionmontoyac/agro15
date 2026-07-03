@@ -33,14 +33,35 @@ function TrendIcon({ trendLabel }: { trendLabel: string }) {
   return <TrendingUpIcon className="size-4" />
 }
 
+function formatPriceRange(min: number | null, max: number | null): string | null {
+  if (min == null || max == null) return null
+  const fmt = (value: number) =>
+    new Intl.NumberFormat("es-CO", {
+      style: "currency",
+      currency: "COP",
+      maximumFractionDigits: 0,
+    }).format(value)
+  return `${fmt(min)} – ${fmt(max)}/kg`
+}
+
 function CityCard({ summary }: { summary: CitySummary }) {
+  const priceRange = formatPriceRange(summary.priceMin, summary.priceMax)
+  const subtitle = summary.marketName
+    ? `${summary.marketName} · ${summary.city}`
+    : summary.city
+
   return (
     <Card className="@container/card bg-linear-to-t from-primary/10 to-card shadow-xs dark:bg-card">
       <CardHeader>
-        <CardDescription>{summary.city}</CardDescription>
+        <CardDescription>{subtitle}</CardDescription>
         <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
           {formatPrice(summary.price)}
         </CardTitle>
+        {priceRange ? (
+          <p className="text-sm text-muted-foreground">
+            Rango del día: <span className="font-medium text-foreground">{priceRange}</span>
+          </p>
+        ) : null}
         <CardAction>
           <Badge variant="outline">
             <TrendIcon trendLabel={summary.trendLabel} />

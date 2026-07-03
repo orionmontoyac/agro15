@@ -2,6 +2,10 @@ export type ChartPoint = {
   date: string
   medellin?: number
   bogota?: number
+  medellinMin?: number
+  medellinMax?: number
+  bogotaMin?: number
+  bogotaMax?: number
 }
 
 function chartDateToTime(date: string): number {

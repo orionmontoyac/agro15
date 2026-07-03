@@ -95,6 +95,11 @@ export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
                   <CardDescription className="text-xl font-semibold tabular-nums text-foreground">
                     {formatPrice(kpi.price)}
                   </CardDescription>
+                  {kpi.priceMin != null && kpi.priceMax != null ? (
+                    <p className="text-xs text-muted-foreground">
+                      Rango: {formatPrice(kpi.priceMin)} – {formatPrice(kpi.priceMax)}
+                    </p>
+                  ) : null}
                   <CardAction>
                     <Badge variant="outline" className="shrink-0">
                       <TrendIcon trendLabel={kpi.trendLabel} />
@@ -135,7 +140,9 @@ export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
                     {dateLabel && (
                       <span className="capitalize">{dateLabel.secondary}</span>
                     )}
-                    <span>· Precio SIPSA — {kpi.market}</span>
+                    <span>
+                      · Precio SIPSA — {kpi.marketName ?? kpi.market}
+                    </span>
                   </div>
                   <span
                     className={cn(

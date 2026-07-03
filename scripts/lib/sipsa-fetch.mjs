@@ -144,8 +144,24 @@ export function buildArchivoCsv(
   return `${departmentCode}${municipalityCode}${productCode}`
 }
 
+export const SIPSA_PRICE_FIELDS = {
+  average: 'PROM_DIARIO',
+  min: 'VAL_MIN',
+  max: 'VAL_MAX',
+  variation: 'VAR_DIARIA',
+  marketName: 'NOM_ABASTO',
+  date: 'Date',
+}
+
 export async function fetchSipsaProductPrices(
-  { departmentCode, municipalityCode, productCode, startDate, endDate },
+  {
+    departmentCode,
+    municipalityCode,
+    productCode,
+    startDate,
+    endDate,
+    reportType = 'day',
+  },
   maxRetries = 3
 ) {
   const payload = {
@@ -159,7 +175,7 @@ export async function fetchSipsaProductPrices(
     ),
     fechaIni: startDate,
     fechaFin: endDate,
-    tipoReporte: 'day',
+    tipoReporte: reportType,
   }
 
   let lastError = null
