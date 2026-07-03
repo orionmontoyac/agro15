@@ -105,8 +105,32 @@ function formatCompactChartAxisPrice(value: number): string {
   return `$${value}`
 }
 
+type CartesianViewBox = {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+}
+
+function normalizeCartesianViewBox(
+  viewBox: unknown
+): { x?: number; y: number; width?: number; height?: number } | null {
+  if (typeof viewBox !== "object" || viewBox == null) return null
+  if (!("x" in viewBox) || !("y" in viewBox)) return null
+
+  const y = (viewBox as CartesianViewBox).y
+  if (y == null) return null
+
+  return {
+    x: (viewBox as CartesianViewBox).x,
+    y,
+    width: (viewBox as CartesianViewBox).width,
+    height: (viewBox as CartesianViewBox).height,
+  }
+}
+
 type ReferencePriceLabelProps = {
-  viewBox?: { x?: number; y?: number; width?: number; height?: number }
+  viewBox?: unknown
   value?: string | number
   fill: string
   fontSize: number
@@ -114,13 +138,14 @@ type ReferencePriceLabelProps = {
 }
 
 function ReferencePriceLabel({
-  viewBox,
+  viewBox: rawViewBox,
   value,
   fill,
   fontSize,
   placement = "above",
 }: ReferencePriceLabelProps) {
-  if (viewBox?.y == null || value == null) return null
+  const viewBox = normalizeCartesianViewBox(rawViewBox)
+  if (!viewBox || value == null) return null
 
   const text = String(value)
   const paddingX = 7
