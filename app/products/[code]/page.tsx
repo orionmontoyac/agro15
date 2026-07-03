@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
@@ -11,10 +12,27 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { getProductDetail } from "@/lib/sipsa/products-data"
+import {
+  buildProductPageMetadata,
+  productNotFoundMetadata,
+} from "@/lib/sipsa/product-metadata"
+import { getProductByCode, getProductDetail } from "@/lib/sipsa/products-data"
 
 type ProductDetailPageProps = {
   params: Promise<{ code: string }>
+}
+
+export async function generateMetadata({
+  params,
+}: ProductDetailPageProps): Promise<Metadata> {
+  const { code } = await params
+  const product = await getProductByCode(code)
+
+  if (!product) {
+    return productNotFoundMetadata
+  }
+
+  return buildProductPageMetadata(product)
 }
 
 export default async function ProductDetailPage({
@@ -32,6 +50,10 @@ export default async function ProductDetailPage({
     medellin,
     bogota,
     chartSeries,
+    chartSeriesWeek,
+    chartSeriesMonth,
+    periodSummaries,
+    supply,
     lastSevenDays,
     priceTrend,
     hasPriceData,
@@ -56,7 +78,10 @@ export default async function ProductDetailPage({
           </Breadcrumb>
 
           <div>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              {product.name}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               Código SIPSA: {product.code}
             </p>
           </div>
@@ -78,6 +103,10 @@ export default async function ProductDetailPage({
               medellin={medellin}
               bogota={bogota}
               chartSeries={chartSeries}
+              chartSeriesWeek={chartSeriesWeek}
+              chartSeriesMonth={chartSeriesMonth}
+              periodSummaries={periodSummaries}
+              supply={supply}
               lastSevenDays={lastSevenDays}
               priceTrend={priceTrend}
             />

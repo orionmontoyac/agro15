@@ -15,7 +15,10 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "agro15 — Precios de frutas",
+  title: {
+    default: "agro15 — Precios de frutas",
+    template: "%s | agro15",
+  },
   description:
     "Consulta precios actuales e históricos de frutas en mercados agrícolas.",
 }

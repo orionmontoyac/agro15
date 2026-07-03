@@ -5,14 +5,21 @@ import { BOGOTA_CODE, MEDELLIN_CODE } from "./constants"
 
 export type { ChartPoint } from "./chart-series"
 
+export type ReportType = "day" | "week" | "month"
+
 export type RawPriceRow = {
   date: string
   price: number
+  price_min: number | null
+  price_max: number | null
+  daily_variation: number | null
+  report_type: ReportType
   product_id: number
   sipsa_products: { product_code: string; product_name: string } | null
   sipsa_municipalities: {
     municipality_code: string
     municipality_name: string
+    market_name: string | null
   } | null
 }
 
@@ -32,17 +39,29 @@ export function normalizePriceRow(row: Record<string, unknown>): RawPriceRow {
       ? (municipalities[0] as {
           municipality_code: string
           municipality_name: string
+          market_name: string | null
         })
       : municipalities && !Array.isArray(municipalities)
         ? (municipalities as {
             municipality_code: string
             municipality_name: string
+            market_name: string | null
           })
         : null
+
+  const optionalNumber = (value: unknown): number | null => {
+    if (value == null || value === "") return null
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
 
   return {
     date: String(row.date),
     price: Number(row.price),
+    price_min: optionalNumber(row.price_min),
+    price_max: optionalNumber(row.price_max),
+    daily_variation: optionalNumber(row.daily_variation),
+    report_type: (row.report_type as ReportType) ?? "day",
     product_id: Number(row.product_id),
     sipsa_products: product,
     sipsa_municipalities: municipality,
@@ -82,6 +101,7 @@ export function findPriceOnOrBefore(
   const match = rows
     .filter(
       (r) =>
+        r.report_type === "day" &&
         r.sipsa_products?.product_code === productCode &&
         r.sipsa_municipalities?.municipality_code === municipalityCode &&
         r.date <= targetDate
@@ -91,21 +111,37 @@ export function findPriceOnOrBefore(
   return match ? Number(match.price) : null
 }
 
+export type LatestCityPrice = {
+  price: number
+  date: string
+  priceMin: number | null
+  priceMax: number | null
+  marketName: string | null
+}
+
 export function getLatestPriceForCity(
   rows: RawPriceRow[],
   productCode: string,
-  municipalityCode: string
-): { price: number; date: string } | null {
+  municipalityCode: string,
+  reportType: ReportType = "day"
+): LatestCityPrice | null {
   const match = rows
     .filter(
       (r) =>
+        r.report_type === reportType &&
         r.sipsa_products?.product_code === productCode &&
         r.sipsa_municipalities?.municipality_code === municipalityCode
     )
     .sort((a, b) => b.date.localeCompare(a.date))[0]
 
   if (!match) return null
-  return { price: Number(match.price), date: match.date }
+  return {
+    price: Number(match.price),
+    date: match.date,
+    priceMin: match.price_min,
+    priceMax: match.price_max,
+    marketName: match.sipsa_municipalities?.market_name ?? null,
+  }
 }
 
 export function getLatestPrice(
@@ -114,7 +150,9 @@ export function getLatestPrice(
   preferredMunicipality: string
 ): { price: number; municipalityCode: string; date: string } | null {
   const productRows = rows.filter(
-    (r) => r.sipsa_products?.product_code === productCode
+    (r) =>
+      r.report_type === "day" &&
+      r.sipsa_products?.product_code === productCode
   )
   if (productRows.length === 0) return null
 
@@ -148,10 +186,13 @@ export function getLatestPrice(
 
 export function buildChartSeries(
   rows: RawPriceRow[],
-  productCode: string
+  productCode: string,
+  reportType: ReportType = "day"
 ): ChartPoint[] {
   const filtered = rows.filter(
-    (r) => r.sipsa_products?.product_code === productCode
+    (r) =>
+      r.report_type === reportType &&
+      r.sipsa_products?.product_code === productCode
   )
   const byDate = new Map<string, ChartPoint>()
 
@@ -163,8 +204,12 @@ export function buildChartSeries(
     const point = byDate.get(row.date)!
     if (code === MEDELLIN_CODE) {
       point.medellin = Number(row.price)
+      if (row.price_min != null) point.medellinMin = row.price_min
+      if (row.price_max != null) point.medellinMax = row.price_max
     } else if (code === BOGOTA_CODE) {
       point.bogota = Number(row.price)
+      if (row.price_min != null) point.bogotaMin = row.price_min
+      if (row.price_max != null) point.bogotaMax = row.price_max
     }
   }
 
@@ -184,62 +229,163 @@ export function getComparisonDateIso(daysAgo = COMPARISON_DAYS): string {
 type FetchPriceRowsOptions = {
   productIds?: number[]
   days?: number
+  reportType?: ReportType
 }
 
 const PRODUCT_ID_BATCH_SIZE = 100
+const PRICE_ROWS_PAGE_SIZE = 1000
+
+const PRICE_ROW_SELECT = `
+  date, price, price_min, price_max, daily_variation, report_type, product_id,
+  sipsa_products ( product_code, product_name ),
+  sipsa_municipalities ( municipality_code, municipality_name, market_name )
+`
 
 async function fetchPriceRowsBatch(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  options: { productIds?: number[]; days: number }
+  options: { productIds?: number[]; days: number; reportType: ReportType }
 ): Promise<RawPriceRow[]> {
-  const { productIds, days } = options
+  const { productIds, days, reportType } = options
   const startIso = getStartDateIso(days)
+  const rows: RawPriceRow[] = []
+  let offset = 0
 
-  let query = supabase
-    .from("sipsa_product_prices")
-    .select(
-      `
-      date, price, product_id,
-      sipsa_products ( product_code, product_name ),
-      sipsa_municipalities ( municipality_code, municipality_name )
-    `
+  while (true) {
+    let query = supabase
+      .from("sipsa_product_prices")
+      .select(PRICE_ROW_SELECT)
+      .eq("report_type", reportType)
+      .gte("date", startIso)
+      .order("date", { ascending: true })
+      .range(offset, offset + PRICE_ROWS_PAGE_SIZE - 1)
+
+    if (productIds?.length) {
+      query = query.in("product_id", productIds)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      return rows
+    }
+
+    if (!data?.length) {
+      break
+    }
+
+    rows.push(
+      ...data.map((row) => normalizePriceRow(row as Record<string, unknown>))
     )
-    .gte("date", startIso)
-    .order("date", { ascending: true })
 
-  if (productIds?.length) {
-    query = query.in("product_id", productIds)
+    if (data.length < PRICE_ROWS_PAGE_SIZE) {
+      break
+    }
+
+    offset += PRICE_ROWS_PAGE_SIZE
   }
 
-  const { data, error } = await query
-
-  if (error || !data?.length) {
-    return []
-  }
-
-  return data.map((row) => normalizePriceRow(row as Record<string, unknown>))
+  return rows
 }
 
 export async function fetchPriceRows(
   options: FetchPriceRowsOptions = {}
 ): Promise<RawPriceRow[]> {
-  const { productIds, days = 90 } = options
+  const { productIds, days = 90, reportType = "day" } = options
   const supabase = await createClient()
 
   if (!productIds?.length) {
-    return fetchPriceRowsBatch(supabase, { days })
+    return fetchPriceRowsBatch(supabase, { days, reportType })
   }
 
   if (productIds.length <= PRODUCT_ID_BATCH_SIZE) {
-    return fetchPriceRowsBatch(supabase, { productIds, days })
+    return fetchPriceRowsBatch(supabase, { productIds, days, reportType })
   }
 
   const rows: RawPriceRow[] = []
   for (let i = 0; i < productIds.length; i += PRODUCT_ID_BATCH_SIZE) {
     const chunk = productIds.slice(i, i + PRODUCT_ID_BATCH_SIZE)
-    const batch = await fetchPriceRowsBatch(supabase, { productIds: chunk, days })
+    const batch = await fetchPriceRowsBatch(supabase, {
+      productIds: chunk,
+      days,
+      reportType,
+    })
     rows.push(...batch)
   }
 
   return rows
+}
+
+export async function fetchAggregatePrices(
+  productId: number,
+  reportType: "week" | "month",
+  days = 730
+): Promise<RawPriceRow[]> {
+  return fetchPriceRows({ productIds: [productId], days, reportType })
+}
+
+export type PeriodSummary = {
+  reportType: "week" | "month"
+  label: string
+  city: string
+  price: number
+  priceMin: number | null
+  priceMax: number | null
+  periodEnd: string
+}
+
+function toPeriodSummary(
+  latest: LatestCityPrice | null,
+  reportType: "week" | "month",
+  label: string,
+  city: string
+): PeriodSummary | null {
+  if (!latest) return null
+  return {
+    reportType,
+    label,
+    city,
+    price: latest.price,
+    priceMin: latest.priceMin,
+    priceMax: latest.priceMax,
+    periodEnd: latest.date,
+  }
+}
+
+export function buildPeriodSummariesByCity(
+  rows: RawPriceRow[],
+  productCode: string
+): {
+  medellin: { week: PeriodSummary | null; month: PeriodSummary | null }
+  bogota: { week: PeriodSummary | null; month: PeriodSummary | null }
+} {
+  return {
+    medellin: {
+      week: toPeriodSummary(
+        getLatestPriceForCity(rows, productCode, MEDELLIN_CODE, "week"),
+        "week",
+        "Semana SIPSA",
+        "Medellín"
+      ),
+      month: toPeriodSummary(
+        getLatestPriceForCity(rows, productCode, MEDELLIN_CODE, "month"),
+        "month",
+        "Mes SIPSA",
+        "Medellín"
+      ),
+    },
+    bogota: {
+      week: toPeriodSummary(
+        getLatestPriceForCity(rows, productCode, BOGOTA_CODE, "week"),
+        "week",
+        "Semana SIPSA",
+        "Bogotá"
+      ),
+      month: toPeriodSummary(
+        getLatestPriceForCity(rows, productCode, BOGOTA_CODE, "month"),
+        "month",
+        "Mes SIPSA",
+        "Bogotá"
+      ),
+    },
+  }
 }

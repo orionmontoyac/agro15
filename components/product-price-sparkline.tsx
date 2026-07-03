@@ -1,6 +1,6 @@
 "use client"
 
-import { Line, LineChart } from "recharts"
+import { Line, LineChart, YAxis } from "recharts"
 
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart"
 import { cn } from "@/lib/utils"
@@ -24,6 +24,23 @@ function sparklineColor(trendLabel?: string): string {
   return "var(--primary)"
 }
 
+/** Tight Y domain so small day-to-day moves read clearly (not flattened against zero). */
+function sparklineYDomain(prices: number[]): [number, number] {
+  if (prices.length === 0) return [0, 1]
+
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const spread = max - min
+
+  if (spread === 0) {
+    const pad = Math.max(Math.abs(min) * 0.04, 50)
+    return [min - pad, max + pad]
+  }
+
+  const pad = spread * 0.12
+  return [min - pad, max + pad]
+}
+
 export function ProductPriceSparkline({
   points,
   trendLabel,
@@ -33,7 +50,7 @@ export function ProductPriceSparkline({
     return (
       <div
         className={cn(
-          "h-14 w-full rounded-md bg-muted/40",
+          "h-16 w-full rounded-md bg-muted/40",
           className
         )}
         aria-hidden
@@ -42,13 +59,16 @@ export function ProductPriceSparkline({
   }
 
   const color = sparklineColor(trendLabel)
+  const prices = points.map((point) => point.price)
+  const yDomain = sparklineYDomain(prices)
 
   return (
     <ChartContainer
       config={chartConfig}
-      className={cn("aspect-auto h-14 w-full", className)}
+      className={cn("aspect-auto h-16 w-full", className)}
     >
-      <LineChart data={points} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+      <LineChart data={points} margin={{ top: 6, right: 4, bottom: 6, left: 4 }}>
+        <YAxis hide domain={yDomain} />
         <Line
           type="monotone"
           dataKey="price"

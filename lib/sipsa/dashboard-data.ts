@@ -4,8 +4,11 @@ export type KpiCard = {
   code: string
   name: string
   price: number
+  priceMin: number | null
+  priceMax: number | null
   priceDate: string | null
   market: string
+  marketName: string | null
   changePct: number | null
   trendLabel: string
   recentPrices: RecentPricePoint[]
@@ -30,8 +33,11 @@ export async function getDashboardData() {
       code: product.code,
       name: product.name,
       price: product.medellinPrice ?? product.bogotaPrice ?? 0,
+      priceMin: product.displayPriceMin,
+      priceMax: product.displayPriceMax,
       priceDate: product.displayPriceDate,
       market: product.medellinPrice !== null ? "Medellín" : "Bogotá",
+      marketName: product.marketName,
       changePct: product.changePct,
       trendLabel: product.trendLabel,
       recentPrices: product.recentPrices,

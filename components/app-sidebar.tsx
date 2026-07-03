@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, SproutIcon, CloudRainIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, SproutIcon, CloudRainIcon, FlaskConicalIcon } from "lucide-react"
 
 const data = {
   user: {
@@ -37,6 +37,11 @@ const data = {
       title: "Lluvias",
       url: "/lluvias",
       icon: <CloudRainIcon />,
+    },
+    {
+      title: "Insumos",
+      url: "/insumos",
+      icon: <FlaskConicalIcon />,
     },
   ],
   documents: [
