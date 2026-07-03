@@ -7,7 +7,6 @@ import {
   CartesianGrid,
   Legend,
   Line,
-  ReferenceDot,
   ReferenceLine,
   XAxis,
   YAxis,
@@ -104,6 +103,68 @@ function formatCompactChartAxisPrice(value: number): string {
     return `$${text}k`
   }
   return `$${value}`
+}
+
+type ReferencePriceLabelProps = {
+  viewBox?: { x?: number; y?: number; width?: number; height?: number }
+  value?: string | number
+  fill: string
+  fontSize: number
+  placement?: "above" | "below"
+}
+
+function ReferencePriceLabel({
+  viewBox,
+  value,
+  fill,
+  fontSize,
+  placement = "above",
+}: ReferencePriceLabelProps) {
+  if (viewBox?.y == null || value == null) return null
+
+  const text = String(value)
+  const paddingX = 7
+  const paddingY = 4
+  const charWidth = fontSize * 0.56
+  const boxWidth = Math.ceil(text.length * charWidth + paddingX * 2)
+  const boxHeight = fontSize + paddingY * 2
+  const x = (viewBox.x ?? 0) + 4
+  const lineY = viewBox.y
+  const gap = 2
+  const topClearance = 2
+
+  let boxY =
+    placement === "below"
+      ? lineY + gap
+      : lineY - boxHeight - gap
+
+  if (placement === "above" && boxY < topClearance) {
+    boxY = lineY + gap
+  }
+
+  const textX = x + paddingX
+  const textY = boxY + paddingY + fontSize - 1
+
+  return (
+    <g>
+      <rect
+        x={x}
+        y={boxY}
+        width={boxWidth}
+        height={boxHeight}
+        rx={5}
+        ry={5}
+        fill="var(--background)"
+        fillOpacity={0.96}
+        stroke={fill}
+        strokeOpacity={0.55}
+        strokeWidth={1}
+      />
+      <text x={textX} y={textY} fill={fill} fontSize={fontSize} fontWeight={600}>
+        {text}
+      </text>
+    </g>
+  )
 }
 
 function formatFullPrice(value: number): string {
@@ -250,6 +311,17 @@ export function ChartAreaInteractive({
   const showLegend = activeSeries.length > 1
 
   const timeRangeLabel = TIME_RANGE_LABELS[timeRange]
+  const referenceLabelFontSize = isMobile ? 12 : 13
+  const maxPriceLabel = isMobile
+    ? formatCompactChartAxisPrice(windowStats?.max ?? 0)
+    : formatChartAxisPrice(windowStats?.max ?? 0)
+  const minPriceLabel = isMobile
+    ? formatCompactChartAxisPrice(windowStats?.min ?? 0)
+    : formatChartAxisPrice(windowStats?.min ?? 0)
+  const minLabelBelow =
+    windowStats != null &&
+    windowStats.max !== windowStats.min &&
+    (windowStats.max - windowStats.min) / windowStats.max < 0.12
 
   const formatXAxisTick = React.useCallback(
     (value: string) => {
@@ -360,7 +432,7 @@ export function ChartAreaInteractive({
               <AreaChart
                 data={chartDisplayData}
                 margin={{
-                  top: 16,
+                  top: 10,
                   right: isMobile ? 4 : 12,
                   left: isMobile ? 0 : 8,
                   bottom: 8,
@@ -431,6 +503,7 @@ export function ChartAreaInteractive({
                   tickMargin={isMobile ? 2 : 8}
                   width={isMobile ? 36 : 72}
                   tickCount={isMobile ? 4 : 5}
+                  padding={{ top: 12, bottom: 12 }}
                   tickFormatter={
                     isMobile ? formatCompactChartAxisPrice : formatChartAxisPrice
                   }
@@ -481,28 +554,47 @@ export function ChartAreaInteractive({
                 {windowStats && (
                   <>
                     <ReferenceLine
-                      x={windowStats.maxPoint.date}
-                      stroke="var(--color-chart-3)"
-                      strokeDasharray="5 4"
-                      strokeWidth={1.5}
-                      ifOverflow="extendDomain"
-                    />
-                    <ReferenceDot
-                      x={windowStats.maxPoint.date}
-                      y={windowStats.maxPoint.value}
-                      r={6}
-                      fill="var(--color-chart-3)"
-                      stroke="var(--background)"
-                      strokeWidth={2}
+                      y={windowStats.max}
+                      stroke="var(--color-chart-1)"
+                      strokeDasharray="6 4"
+                      strokeWidth={1}
+                      strokeOpacity={0.45}
                       ifOverflow="extendDomain"
                       label={{
-                        value: `Máx ${formatChartAxisPrice(windowStats.maxPoint.value)}`,
-                        position: "top",
-                        fill: "var(--foreground)",
-                        fontSize: 12,
-                        fontWeight: 600,
+                        position: "insideLeft",
+                        content: (props) => (
+                          <ReferencePriceLabel
+                            viewBox={props.viewBox}
+                            value={maxPriceLabel}
+                            fill="var(--color-chart-1)"
+                            fontSize={referenceLabelFontSize}
+                            placement="above"
+                          />
+                        ),
                       }}
                     />
+                    {windowStats.max !== windowStats.min ? (
+                      <ReferenceLine
+                        y={windowStats.min}
+                        stroke="var(--destructive)"
+                        strokeDasharray="6 4"
+                        strokeWidth={1}
+                        strokeOpacity={0.45}
+                        ifOverflow="extendDomain"
+                        label={{
+                          position: "insideLeft",
+                          content: (props) => (
+                            <ReferencePriceLabel
+                              viewBox={props.viewBox}
+                              value={minPriceLabel}
+                              fill="var(--destructive)"
+                              fontSize={referenceLabelFontSize}
+                              placement={minLabelBelow ? "below" : "above"}
+                            />
+                          ),
+                        }}
+                      />
+                    ) : null}
                   </>
                 )}
                 {showBogota && (
