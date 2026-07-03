@@ -21,6 +21,9 @@ export const metadata: Metadata = {
   },
   description:
     "Consulta precios actuales e históricos de frutas en mercados agrícolas.",
+  appleWebApp: {
+    title: "Agro15",
+  },
 }
 
 export default function RootLayout({
