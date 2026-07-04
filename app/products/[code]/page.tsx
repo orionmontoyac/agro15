@@ -56,6 +56,7 @@ export default async function ProductDetailPage({
     supply,
     lastSevenDays,
     priceTrend,
+    monthlyHeatmap,
     hasPriceData,
   } = detail
 
@@ -109,6 +110,7 @@ export default async function ProductDetailPage({
               supply={supply}
               lastSevenDays={lastSevenDays}
               priceTrend={priceTrend}
+              monthlyHeatmap={monthlyHeatmap}
             />
           )}
         </div>

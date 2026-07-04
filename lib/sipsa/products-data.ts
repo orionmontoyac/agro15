@@ -2,6 +2,10 @@ import { createClient } from "@/lib/supabase/server"
 
 import { BOGOTA_CODE, MEDELLIN_CODE } from "./constants"
 import {
+  buildMonthlyHeatmap,
+  type MonthlyHeatmapData,
+} from "./monthly-heatmap"
+import {
   buildProductPriceTrend,
   type ProductPriceTrend,
 } from "./price-trend"
@@ -42,6 +46,25 @@ export type ProductListRow = {
   recentPrices: RecentPricePoint[]
 }
 
+export function computeProductTrendSummary(products: ProductListRow[]) {
+  let subiendo = 0
+  let bajando = 0
+  let estable = 0
+
+  for (const product of products) {
+    if (product.trendLabel === "Subiendo") subiendo += 1
+    else if (product.trendLabel === "Bajando") bajando += 1
+    else estable += 1
+  }
+
+  return {
+    total: products.length,
+    subiendo,
+    bajando,
+    estable,
+  }
+}
+
 export type CitySummary = {
   city: string
   price: number
@@ -64,6 +87,8 @@ export type MergedDailyPriceEntry = {
   bogota: number | null
 }
 
+export type { MonthlyHeatmapData } from "./monthly-heatmap"
+
 export type ProductDetail = {
   product: { id: number; code: string; name: string }
   medellin: CitySummary | null
@@ -78,6 +103,10 @@ export type ProductDetail = {
   supply: ProductSupplySummary
   lastSevenDays: MergedDailyPriceEntry[]
   priceTrend: ProductPriceTrend
+  monthlyHeatmap: {
+    medellin: MonthlyHeatmapData
+    bogota: MonthlyHeatmapData
+  }
   hasPriceData: boolean
 }
 
@@ -283,7 +312,7 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
   const product = await getProductByCode(code)
   if (!product) return null
 
-  const [dailyRows, aggregateRows, supply] = await Promise.all([
+  const [dailyRows, aggregateRows, heatmapRows, supply] = await Promise.all([
     fetchPriceRows({ productIds: [product.id], reportType: "day", days: 365 * 5 }),
     fetchPriceRows({ productIds: [product.id], days: 730, reportType: "week" }).then(
       async (weekRows) => {
@@ -295,6 +324,11 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
         return [...weekRows, ...monthRows]
       }
     ),
+    fetchPriceRows({
+      productIds: [product.id],
+      reportType: "day",
+      days: undefined,
+    }),
     getProductSupply(product.id),
   ])
 
@@ -315,6 +349,10 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
   const periodSummaries = buildPeriodSummariesByCity(allRows, code)
   const lastSevenDays = buildLastSevenMerged(rows, code)
   const priceTrend = buildProductPriceTrend(lastSevenDays)
+  const monthlyHeatmap = {
+    medellin: buildMonthlyHeatmap(heatmapRows, code, MEDELLIN_CODE),
+    bogota: buildMonthlyHeatmap(heatmapRows, code, BOGOTA_CODE),
+  }
 
   return {
     product: {
@@ -331,6 +369,7 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
     supply,
     lastSevenDays,
     priceTrend,
+    monthlyHeatmap,
     hasPriceData,
   }
 }

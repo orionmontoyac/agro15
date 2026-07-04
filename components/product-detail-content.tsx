@@ -5,6 +5,7 @@ import * as React from "react"
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { ProductCityCards } from "@/components/product-city-cards"
 import { ProductLastSevenDays } from "@/components/product-last-seven-days"
+import { ProductMonthlyHeatmap } from "@/components/product-monthly-heatmap"
 import { ProductPeriodSummary } from "@/components/product-period-summary"
 import { ProductPriceTrend } from "@/components/product-price-trend"
 import { ProductSupplySection } from "@/components/product-supply-section"
@@ -22,6 +23,7 @@ import type { ChartPoint, PeriodSummary } from "@/lib/sipsa/price-fetch"
 import type {
   CitySummary,
   MergedDailyPriceEntry,
+  MonthlyHeatmapData,
   ProductPriceTrend as ProductPriceTrendData,
   ProductSupplySummary,
 } from "@/lib/sipsa/products-data"
@@ -40,6 +42,10 @@ type ProductDetailContentProps = {
   supply: ProductSupplySummary
   lastSevenDays: MergedDailyPriceEntry[]
   priceTrend: ProductPriceTrendData
+  monthlyHeatmap: {
+    medellin: MonthlyHeatmapData
+    bogota: MonthlyHeatmapData
+  }
 }
 
 export function ProductDetailContent({
@@ -53,6 +59,7 @@ export function ProductDetailContent({
   supply,
   lastSevenDays,
   priceTrend,
+  monthlyHeatmap,
 }: ProductDetailContentProps) {
   const [municipalityFilter, setMunicipalityFilter] =
     React.useState<MunicipalityFilter>(MEDELLIN_CODE)
@@ -126,6 +133,13 @@ export function ProductDetailContent({
       <ProductSupplySection
         supply={supply}
         municipalityFilter={municipalityFilter}
+      />
+
+      <ProductMonthlyHeatmap
+        medellin={monthlyHeatmap.medellin}
+        bogota={monthlyHeatmap.bogota}
+        showMedellin={showMedellin}
+        showBogota={showBogota}
       />
     </div>
   )

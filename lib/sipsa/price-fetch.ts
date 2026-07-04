@@ -243,10 +243,9 @@ const PRICE_ROW_SELECT = `
 
 async function fetchPriceRowsBatch(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  options: { productIds?: number[]; days: number; reportType: ReportType }
+  options: { productIds?: number[]; days?: number; reportType: ReportType }
 ): Promise<RawPriceRow[]> {
   const { productIds, days, reportType } = options
-  const startIso = getStartDateIso(days)
   const rows: RawPriceRow[] = []
   let offset = 0
 
@@ -255,9 +254,12 @@ async function fetchPriceRowsBatch(
       .from("sipsa_product_prices")
       .select(PRICE_ROW_SELECT)
       .eq("report_type", reportType)
-      .gte("date", startIso)
       .order("date", { ascending: true })
       .range(offset, offset + PRICE_ROWS_PAGE_SIZE - 1)
+
+    if (days != null) {
+      query = query.gte("date", getStartDateIso(days))
+    }
 
     if (productIds?.length) {
       query = query.in("product_id", productIds)
@@ -290,7 +292,8 @@ async function fetchPriceRowsBatch(
 export async function fetchPriceRows(
   options: FetchPriceRowsOptions = {}
 ): Promise<RawPriceRow[]> {
-  const { productIds, days = 90, reportType = "day" } = options
+  const { productIds, reportType = "day" } = options
+  const days = "days" in options ? options.days : 90
   const supabase = await createClient()
 
   if (!productIds?.length) {
