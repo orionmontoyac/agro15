@@ -46,6 +46,25 @@ export type ProductListRow = {
   recentPrices: RecentPricePoint[]
 }
 
+export function computeProductTrendSummary(products: ProductListRow[]) {
+  let subiendo = 0
+  let bajando = 0
+  let estable = 0
+
+  for (const product of products) {
+    if (product.trendLabel === "Subiendo") subiendo += 1
+    else if (product.trendLabel === "Bajando") bajando += 1
+    else estable += 1
+  }
+
+  return {
+    total: products.length,
+    subiendo,
+    bajando,
+    estable,
+  }
+}
+
 export type CitySummary = {
   city: string
   price: number
