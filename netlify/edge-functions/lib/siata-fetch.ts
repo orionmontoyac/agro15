@@ -1,3 +1,5 @@
+/** Deno/Edge copy — keep in sync with lib/rain/siata-fetch.ts */
+
 export const SIATA_RAIN_LAYER_URL =
   "https://siata.gov.co/siata_nuevo/index.php/capa_service/consultar_capa_carga"
 
@@ -31,18 +33,26 @@ export type SiataRainLayerResponse = {
   feature_vector?: SiataFeature[]
 }
 
-function formatFetchError(error: unknown, url: string): Error {
-  if (!(error instanceof Error)) {
-    return new Error(`SIATA request failed for ${url}`)
-  }
+const MONTH_KEY_MAP: Record<string, number> = {
+  P_ACUM_ENERO: 1,
+  P_ACUM_FEBRERO: 2,
+  P_ACUM_MARZO: 3,
+  P_ACUM_ABRIL: 4,
+  P_ACUM_MAYO: 5,
+  P_ACUM_JUNIO: 6,
+  P_ACUM_JULIO: 7,
+  P_ACUM_AGOSTO: 8,
+  P_ACUM_SEPTIEMBRE: 9,
+  P_ACUM_OCTUBRE: 10,
+  P_ACUM_NOVIEMBRE: 11,
+  P_ACUM_DICIEMBRE: 12,
+}
 
-  if (error.name === "AbortError") {
-    return new Error(
-      `SIATA request timed out for ${url} (${SIATA_DEFAULT_TIMEOUT_MS}ms).`
-    )
-  }
-
-  return error
+export type SiataLayerMonthlyRow = {
+  stationCode: string
+  calendarYear: number
+  month: number
+  rainMm: number
 }
 
 export function parseMm(value: string): number {
@@ -80,7 +90,7 @@ export async function fetchSiataRainLayer(): Promise<SiataRainLayerResponse | nu
       headers: SIATA_HEADERS,
       body: `id_capa=${SIATA_RAIN_LAYER_ID}`,
       signal: controller.signal,
-      next: { revalidate: 300 },
+      cache: "no-store",
     })
 
     if (!response.ok) {
@@ -89,7 +99,12 @@ export async function fetchSiataRainLayer(): Promise<SiataRainLayerResponse | nu
 
     return (await response.json()) as SiataRainLayerResponse
   } catch (error) {
-    throw formatFetchError(error, SIATA_RAIN_LAYER_URL)
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `SIATA request timed out for ${SIATA_RAIN_LAYER_URL} (${SIATA_DEFAULT_TIMEOUT_MS}ms).`
+      )
+    }
+    throw error
   } finally {
     clearTimeout(timeoutId)
   }
@@ -101,28 +116,6 @@ export function getUrraoSensor(
   const index = findUrraoSensorIndex(data.feature_vector)
   if (index == null || !data.feature_vector) return null
   return data.feature_vector[index] ?? null
-}
-
-const MONTH_KEY_MAP: Record<string, number> = {
-  P_ACUM_ENERO: 1,
-  P_ACUM_FEBRERO: 2,
-  P_ACUM_MARZO: 3,
-  P_ACUM_ABRIL: 4,
-  P_ACUM_MAYO: 5,
-  P_ACUM_JUNIO: 6,
-  P_ACUM_JULIO: 7,
-  P_ACUM_AGOSTO: 8,
-  P_ACUM_SEPTIEMBRE: 9,
-  P_ACUM_OCTUBRE: 10,
-  P_ACUM_NOVIEMBRE: 11,
-  P_ACUM_DICIEMBRE: 12,
-}
-
-export type SiataLayerMonthlyRow = {
-  stationCode: string
-  calendarYear: number
-  month: number
-  rainMm: number
 }
 
 export function parseSiataLayerMonthlyRows(
@@ -153,21 +146,4 @@ export function parseSiataLayerMonthlyRows(
   }
 
   return rows.sort((a, b) => a.month - b.month)
-}
-
-export function parseSiataLayerStationMetadata(sensor: SiataFeature) {
-  const descripcion = sensor.atributos?.descripcion
-  if (!descripcion) return null
-
-  const stationCode = descripcion.Codigo?.valor_alfanumerico
-  if (!stationCode) return null
-
-  return {
-    stationCode,
-    stationName:
-      descripcion.Nombre?.valor_alfanumerico ??
-      descripcion.NombreEstacion?.valor_alfanumerico ??
-      `Estación ${stationCode}`,
-    city: descripcion.Municipio?.valor_alfanumerico ?? null,
-  }
 }

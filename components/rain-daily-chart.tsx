@@ -16,11 +16,11 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
-import type { RainfallMonthlyPoint } from "@/lib/rain/rain-data"
+import type { RainfallDailyPoint } from "@/lib/rain/rain-data"
 
 const chartConfig = {
   rainMm: {
-    label: "Lluvia acumulada",
+    label: "Lluvia diaria",
     color: "var(--chart-1)",
   },
 } satisfies ChartConfig
@@ -29,59 +29,58 @@ function formatRainMm(value: number): string {
   return `${value.toFixed(1)} mm`
 }
 
-type RainMonthlyChartProps = {
-  monthly: RainfallMonthlyPoint[]
-  calendarYear?: number
+function formatDayLabel(dateIso: string): string {
+  const date = new Date(`${dateIso}T12:00:00`)
+  return date.toLocaleDateString("es-CO", { day: "numeric", month: "short" })
 }
 
-export function RainMonthlyChart({
-  monthly,
-  calendarYear = new Date().getFullYear(),
-}: RainMonthlyChartProps) {
-  const stats = React.useMemo(() => {
-    if (monthly.length === 0) return null
+type RainDailyChartProps = {
+  daily: RainfallDailyPoint[]
+}
 
-    const currentMonth = new Date().getMonth() + 1
-    const eligible = monthly.filter((point) => point.month <= currentMonth)
-    const values = eligible.map((point) => point.rainMm)
+export function RainDailyChart({ daily }: RainDailyChartProps) {
+  const chartData = React.useMemo(
+    () =>
+      daily.map((point) => ({
+        ...point,
+        label: formatDayLabel(point.date),
+      })),
+    [daily]
+  )
+
+  const stats = React.useMemo(() => {
+    if (chartData.length === 0) return null
+    const values = chartData.map((point) => point.rainMm)
     const total = values.reduce((sum, value) => sum + value, 0)
-    const maxPoint = eligible.reduce((best, point) =>
+    const maxPoint = chartData.reduce((best, point) =>
       point.rainMm > best.rainMm ? point : best
     )
-
     return { total, maxPoint }
-  }, [monthly])
+  }, [chartData])
 
-  if (monthly.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Lluvia mensual acumulada</CardTitle>
-          <CardDescription>
-            No hay datos mensuales disponibles en este momento.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    )
+  if (daily.length === 0) {
+    return null
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Lluvia mensual acumulada</CardTitle>
+        <CardTitle>Lluvia diaria (30 días)</CardTitle>
         <CardDescription>
-          Precipitación acumulada por mes en {calendarYear} (mm)
+          Promedio diario de los pluviómetros SIATA — estación Urrao (641)
         </CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="aspect-auto h-[280px] w-full">
-          <BarChart data={monthly} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
+          <BarChart data={chartData} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
             <CartesianGrid vertical={false} />
             <XAxis
-              dataKey="shortLabel"
+              dataKey="label"
               tickLine={false}
               axisLine={false}
               tickMargin={8}
+              interval="preserveStartEnd"
+              minTickGap={24}
             />
             <YAxis
               tickLine={false}
@@ -95,9 +94,9 @@ export function RainMonthlyChart({
                 <ChartTooltipContent
                   labelFormatter={(_, payload) => {
                     const point = payload?.[0]?.payload as
-                      | RainfallMonthlyPoint
+                      | (RainfallDailyPoint & { label: string })
                       | undefined
-                    return point?.label ?? ""
+                    return point ? formatDayLabel(point.date) : ""
                   }}
                   formatter={(value) => (
                     <span className="font-mono font-medium tabular-nums">
@@ -115,26 +114,27 @@ export function RainMonthlyChart({
           </BarChart>
         </ChartContainer>
 
-        {stats && (
+        {stats ? (
           <div className="mt-4 grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2">
             <div className="flex flex-col gap-0.5">
               <span className="text-xs text-muted-foreground">
-                Mes con más lluvia
+                Día con más lluvia
               </span>
               <span className="text-sm font-semibold tabular-nums">
-                {stats.maxPoint.label} · {formatRainMm(stats.maxPoint.rainMm)}
+                {formatDayLabel(stats.maxPoint.date)} ·{" "}
+                {formatRainMm(stats.maxPoint.rainMm)}
               </span>
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-xs text-muted-foreground">
-                Total acumulado ({calendarYear})
+                Total en ventana
               </span>
               <span className="text-sm font-semibold tabular-nums">
                 {formatRainMm(stats.total)}
               </span>
             </div>
           </div>
-        )}
+        ) : null}
       </CardContent>
     </Card>
   )

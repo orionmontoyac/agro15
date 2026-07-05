@@ -7,6 +7,8 @@ import {
 } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import {
+  computeDaysWithoutRain,
+  formatDaysWithoutRainLabel,
   getCurrentMonthAccumulation,
   getRecentRainStatus,
   type RainfallData,
@@ -14,6 +16,7 @@ import {
 import {
   CalendarIcon,
   CloudRainIcon,
+  CloudSunIcon,
   DropletsIcon,
   SunIcon,
 } from "lucide-react"
@@ -48,9 +51,14 @@ export function RainCurrentCards({ data }: RainCurrentCardsProps) {
   const monthTotal = getCurrentMonthAccumulation(data.monthly)
   const isRainingNow = (data.current?.rainMm5m ?? 0) > 0
   const isDryPeriod = data.periods != null && data.periods.rainMm72h === 0
+  const daysWithoutRain = computeDaysWithoutRain(
+    data.daily,
+    data.current?.rainMm5m
+  )
+  const isLongDrySpell = daysWithoutRain != null && daysWithoutRain >= 3
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
       <Card className="bg-linear-to-t from-primary/10 to-card shadow-xs dark:bg-card">
         <CardHeader className="gap-2">
           <CardDescription className="flex items-center gap-2">
@@ -120,6 +128,35 @@ export function RainCurrentCards({ data }: RainCurrentCardsProps) {
         </CardHeader>
         <CardFooter className="text-sm text-muted-foreground">
           {getRecentRainStatus(data.periods)}
+        </CardFooter>
+      </Card>
+
+      <Card
+        className={cn(
+          "bg-linear-to-t to-card shadow-xs dark:bg-card",
+          isLongDrySpell ? "from-chart-5/15" : "from-primary/8"
+        )}
+      >
+        <CardHeader className="gap-2">
+          <CardDescription className="flex items-center gap-2">
+            {isLongDrySpell ? (
+              <SunIcon className="size-4" />
+            ) : (
+              <CloudSunIcon className="size-4" />
+            )}
+            Días sin lluvia
+          </CardDescription>
+          <CardTitle
+            className={cn(
+              "text-3xl font-semibold tabular-nums",
+              isLongDrySpell && "text-chart-5"
+            )}
+          >
+            {daysWithoutRain != null ? daysWithoutRain : "—"}
+          </CardTitle>
+        </CardHeader>
+        <CardFooter className="text-sm text-muted-foreground">
+          {formatDaysWithoutRainLabel(daysWithoutRain)}
         </CardFooter>
       </Card>
 
