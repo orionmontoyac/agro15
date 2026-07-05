@@ -1,5 +1,7 @@
 /** Deno/Edge copy — keep in sync with lib/rain/siata-fetch.ts */
 
+import { siataLayerHeaders } from "./siata-http-headers.ts"
+
 export const SIATA_RAIN_LAYER_URL =
   "https://siata.gov.co/siata_nuevo/index.php/capa_service/consultar_capa_carga"
 
@@ -9,14 +11,7 @@ export const SIATA_DEFAULT_TIMEOUT_MS = 120_000
 
 export const URRAO_MUNICIPALITY = "Urrao"
 
-const SIATA_HEADERS = {
-  Accept: "application/json, text/javascript, */*; q=0.01",
-  "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
-  "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-  Origin: "https://siata.gov.co",
-  Referer: "https://siata.gov.co/siata_nuevo/",
-  "X-Requested-With": "XMLHttpRequest",
-}
+const SIATA_HEADERS = siataLayerHeaders()
 
 type SiataAttributeValue = {
   valor_alfanumerico?: string
@@ -77,6 +72,36 @@ export function findUrraoSensorIndex(
   return null
 }
 
+function formatFetchError(
+  error: unknown,
+  context: string,
+  url: string,
+  timeoutMs: number
+): Error {
+  if (error instanceof Error && error.name === "AbortError") {
+    return new Error(
+      `${context} timed out after ${timeoutMs}ms (url=${url})`
+    )
+  }
+
+  if (!(error instanceof Error)) {
+    return new Error(`${context} failed (url=${url}): ${String(error)}`)
+  }
+
+  const cause =
+    error.cause instanceof Error
+      ? `${error.cause.name}: ${error.cause.message}`
+      : error.cause != null
+        ? String(error.cause)
+        : null
+
+  const detail = cause
+    ? `${error.name}: ${error.message}; cause=${cause}`
+    : `${error.name}: ${error.message}`
+
+  return new Error(`${context} failed (url=${url}): ${detail}`)
+}
+
 export async function fetchSiataRainLayer(): Promise<SiataRainLayerResponse | null> {
   const controller = new AbortController()
   const timeoutId = setTimeout(
@@ -94,17 +119,20 @@ export async function fetchSiataRainLayer(): Promise<SiataRainLayerResponse | nu
     })
 
     if (!response.ok) {
-      throw new Error(`SIATA API error ${response.status}`)
+      const bodyPreview = (await response.text()).slice(0, 200)
+      throw new Error(
+        `SIATA layer HTTP ${response.status} body=${bodyPreview}`
+      )
     }
 
     return (await response.json()) as SiataRainLayerResponse
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        `SIATA request timed out for ${SIATA_RAIN_LAYER_URL} (${SIATA_DEFAULT_TIMEOUT_MS}ms).`
-      )
-    }
-    throw error
+    throw formatFetchError(
+      error,
+      "SIATA capa_service fetch",
+      SIATA_RAIN_LAYER_URL,
+      SIATA_DEFAULT_TIMEOUT_MS
+    )
   } finally {
     clearTimeout(timeoutId)
   }

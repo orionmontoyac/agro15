@@ -1,3 +1,5 @@
+import { geoportalRainHeaders } from "./siata-http-headers"
+
 /** SIATA Geoportal pluvio_30d — rolling ~31-day window per station. */
 export const SIATA_GEOPORTAL_BASE =
   "https://geoportal.siata.gov.co/fastgeoapi/geodata/geographJson/2/pluvio_30d"
@@ -126,7 +128,7 @@ export async function fetchGeoportalRain30d(
   try {
     const response = await fetch(url, {
       method: "GET",
-      headers: { Accept: "application/json" },
+      headers: geoportalRainHeaders(),
       signal: controller.signal,
       cache: "no-store",
     })

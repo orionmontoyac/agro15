@@ -1,3 +1,5 @@
+import { siataLayerHeaders } from "./siata-http-headers"
+
 export const SIATA_RAIN_LAYER_URL =
   "https://siata.gov.co/siata_nuevo/index.php/capa_service/consultar_capa_carga"
 
@@ -7,14 +9,7 @@ export const SIATA_DEFAULT_TIMEOUT_MS = 120_000
 
 export const URRAO_MUNICIPALITY = "Urrao"
 
-const SIATA_HEADERS = {
-  Accept: "application/json, text/javascript, */*; q=0.01",
-  "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
-  "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-  Origin: "https://siata.gov.co",
-  Referer: "https://siata.gov.co/siata_nuevo/",
-  "X-Requested-With": "XMLHttpRequest",
-}
+const SIATA_HEADERS = siataLayerHeaders()
 
 type SiataAttributeValue = {
   valor_alfanumerico?: string
