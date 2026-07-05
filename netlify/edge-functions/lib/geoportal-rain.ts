@@ -1,5 +1,7 @@
 /** Deno/Edge copy — keep in sync with lib/rain/geoportal-rain.ts */
 
+import { geoportalRainHeaders } from "./siata-http-headers.ts"
+
 export const SIATA_GEOPORTAL_BASE =
   "https://geoportal.siata.gov.co/fastgeoapi/geodata/geographJson/2/pluvio_30d"
 
@@ -113,6 +115,36 @@ export function parseGeoportalRainResponse(
   return { station, daily }
 }
 
+function formatFetchError(
+  error: unknown,
+  context: string,
+  url: string,
+  timeoutMs: number
+): Error {
+  if (error instanceof Error && error.name === "AbortError") {
+    return new Error(
+      `${context} timed out after ${timeoutMs}ms (url=${url})`
+    )
+  }
+
+  if (!(error instanceof Error)) {
+    return new Error(`${context} failed (url=${url}): ${String(error)}`)
+  }
+
+  const cause =
+    error.cause instanceof Error
+      ? `${error.cause.name}: ${error.cause.message}`
+      : error.cause != null
+        ? String(error.cause)
+        : null
+
+  const detail = cause
+    ? `${error.name}: ${error.message}; cause=${cause}`
+    : `${error.name}: ${error.message}`
+
+  return new Error(`${context} failed (url=${url}): ${detail}`)
+}
+
 export async function fetchGeoportalRain30d(
   stationCode: string = URRAO_STATION_CODE
 ): Promise<GeoportalRainResponse> {
@@ -126,23 +158,21 @@ export async function fetchGeoportalRain30d(
   try {
     const response = await fetch(url, {
       method: "GET",
-      headers: { Accept: "application/json" },
+      headers: geoportalRainHeaders(),
       signal: controller.signal,
       cache: "no-store",
     })
 
     if (!response.ok) {
-      throw new Error(`Geoportal API error ${response.status} for ${url}`)
+      const bodyPreview = (await response.text()).slice(0, 200)
+      throw new Error(
+        `Geoportal HTTP ${response.status} for ${url} body=${bodyPreview}`
+      )
     }
 
     return (await response.json()) as GeoportalRainResponse
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        `Geoportal request timed out (${GEOPORTAL_DEFAULT_TIMEOUT_MS}ms)`
-      )
-    }
-    throw error
+    throw formatFetchError(error, "Geoportal pluvio_30d fetch", url, GEOPORTAL_DEFAULT_TIMEOUT_MS)
   } finally {
     clearTimeout(timeoutId)
   }

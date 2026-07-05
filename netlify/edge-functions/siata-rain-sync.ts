@@ -10,6 +10,13 @@ import {
   getUrraoSensor,
   parseSiataLayerMonthlyRows,
 } from "./lib/siata-fetch.ts"
+import {
+  logError,
+  logInfo,
+  logWarn,
+  serializeError,
+  timedStep,
+} from "./lib/logger.ts"
 
 type EdgeEnv = {
   SUPABASE_URL?: string
@@ -79,7 +86,9 @@ async function upsertStation(
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`Station upsert failed: ${response.status} ${text}`)
+    throw new Error(
+      `Station upsert failed: HTTP ${response.status} ${text.slice(0, 300)}`
+    )
   }
 }
 
@@ -91,7 +100,10 @@ async function upsertMonthlyRows(
 ) {
   const layer = await fetchSiataRainLayer()
   const sensor = layer ? getUrraoSensor(layer) : null
-  if (!sensor) return 0
+  if (!sensor) {
+    logWarn("SIATA layer returned no Urrao sensor", { stationCode, calendarYear })
+    return 0
+  }
 
   const fetchedAt = new Date().toISOString()
   const rows = parseSiataLayerMonthlyRows(sensor, calendarYear)
@@ -104,7 +116,10 @@ async function upsertMonthlyRows(
       fetched_at: fetchedAt,
     }))
 
-  if (rows.length === 0) return 0
+  if (rows.length === 0) {
+    logWarn("No monthly rows parsed for station", { stationCode, calendarYear })
+    return 0
+  }
 
   const response = await fetch(`${supabaseUrl}/rest/v1/siata_rain_monthly`, {
     method: "POST",
@@ -114,7 +129,9 @@ async function upsertMonthlyRows(
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`Monthly upsert failed: ${response.status} ${text}`)
+    throw new Error(
+      `Monthly upsert failed: HTTP ${response.status} ${text.slice(0, 300)}`
+    )
   }
 
   return rows.length
@@ -150,11 +167,16 @@ async function upsertDailyRows(
 
   if (!response.ok) {
     const text = await response.text()
-    throw new Error(`Daily upsert failed: ${response.status} ${text}`)
+    throw new Error(
+      `Daily upsert failed: HTTP ${response.status} ${text.slice(0, 300)}`
+    )
   }
 }
 
 export default async (request: Request): Promise<Response> => {
+  const requestId = crypto.randomUUID().slice(0, 8)
+  const startedAt = Date.now()
+
   if (request.method !== "POST" && request.method !== "GET") {
     return jsonResponse({ ok: false, error: "Method not allowed" }, 405)
   }
@@ -164,6 +186,7 @@ export default async (request: Request): Promise<Response> => {
   if (env.CRON_SECRET) {
     const auth = request.headers.get("Authorization")
     if (auth !== `Bearer ${env.CRON_SECRET}`) {
+      logWarn("Unauthorized sync request", { requestId, method: request.method })
       return unauthorized()
     }
   }
@@ -174,42 +197,77 @@ export default async (request: Request): Promise<Response> => {
     const url = new URL(request.url)
     const stationCode = url.searchParams.get("station") ?? URRAO_STATION_CODE
 
-    const raw = await fetchGeoportalRain30d(stationCode)
+    logInfo("Sync request received", {
+      requestId,
+      method: request.method,
+      stationCode,
+      supabaseHost: new URL(env.SUPABASE_URL).host,
+    })
+
+    const raw = await timedStep(
+      "Fetch Geoportal pluvio_30d",
+      () => fetchGeoportalRain30d(stationCode),
+      { requestId, stationCode }
+    )
+
     const { station, daily } = parseGeoportalRainResponse(raw, stationCode)
 
     if (daily.length === 0) {
       throw new Error(`No daily rows parsed for station ${stationCode}`)
     }
 
-    await upsertStation(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, station)
-    await upsertDailyRows(
-      env.SUPABASE_URL,
-      env.SUPABASE_SERVICE_ROLE_KEY,
-      station.stationCode,
-      daily
+    logInfo("Parsed Geoportal daily rows", {
+      requestId,
+      stationCode: station.stationCode,
+      stationName: station.stationName,
+      rowCount: daily.length,
+    })
+
+    await timedStep(
+      "Upsert station metadata",
+      () =>
+        upsertStation(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, station),
+      { requestId, stationCode: station.stationCode }
+    )
+
+    await timedStep(
+      "Upsert daily rows",
+      () =>
+        upsertDailyRows(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          station.stationCode,
+          daily
+        ),
+      { requestId, stationCode: station.stationCode, rowCount: daily.length }
     )
 
     const calendarYear = new Date().getFullYear()
     let monthlyRowsUpserted = 0
 
     try {
-      monthlyRowsUpserted = await upsertMonthlyRows(
-        env.SUPABASE_URL,
-        env.SUPABASE_SERVICE_ROLE_KEY,
-        station.stationCode,
-        calendarYear
+      monthlyRowsUpserted = await timedStep(
+        "Fetch SIATA layer + upsert monthly rows",
+        () =>
+          upsertMonthlyRows(
+            env.SUPABASE_URL,
+            env.SUPABASE_SERVICE_ROLE_KEY,
+            station.stationCode,
+            calendarYear
+          ),
+        { requestId, stationCode: station.stationCode, calendarYear }
       )
     } catch (monthlyError) {
-      const message =
-        monthlyError instanceof Error
-          ? monthlyError.message
-          : "Monthly sync failed"
-      console.warn(`SIATA monthly sync warning: ${message}`)
+      logWarn("Monthly sync skipped after failure", {
+        requestId,
+        stationCode: station.stationCode,
+        calendarYear,
+        ...serializeError(monthlyError),
+      })
     }
 
     const dates = daily.map((row) => row.rainDate).sort()
-
-    return jsonResponse({
+    const result = {
       ok: true,
       rowsUpserted: daily.length,
       monthlyRowsUpserted,
@@ -220,9 +278,22 @@ export default async (request: Request): Promise<Response> => {
         from: dates[0] ?? null,
         to: dates[dates.length - 1] ?? null,
       },
+    }
+
+    logInfo("Sync completed", {
+      requestId,
+      durationMs: Date.now() - startedAt,
+      ...result,
     })
+
+    return jsonResponse(result)
   } catch (error) {
+    logError("Sync failed", error, {
+      requestId,
+      durationMs: Date.now() - startedAt,
+    })
+
     const message = error instanceof Error ? error.message : "Sync failed"
-    return jsonResponse({ ok: false, error: message }, 500)
+    return jsonResponse({ ok: false, error: message, requestId }, 500)
   }
 }
