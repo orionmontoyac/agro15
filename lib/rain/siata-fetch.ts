@@ -102,3 +102,72 @@ export function getUrraoSensor(
   if (index == null || !data.feature_vector) return null
   return data.feature_vector[index] ?? null
 }
+
+const MONTH_KEY_MAP: Record<string, number> = {
+  P_ACUM_ENERO: 1,
+  P_ACUM_FEBRERO: 2,
+  P_ACUM_MARZO: 3,
+  P_ACUM_ABRIL: 4,
+  P_ACUM_MAYO: 5,
+  P_ACUM_JUNIO: 6,
+  P_ACUM_JULIO: 7,
+  P_ACUM_AGOSTO: 8,
+  P_ACUM_SEPTIEMBRE: 9,
+  P_ACUM_OCTUBRE: 10,
+  P_ACUM_NOVIEMBRE: 11,
+  P_ACUM_DICIEMBRE: 12,
+}
+
+export type SiataLayerMonthlyRow = {
+  stationCode: string
+  calendarYear: number
+  month: number
+  rainMm: number
+}
+
+export function parseSiataLayerMonthlyRows(
+  sensor: SiataFeature,
+  calendarYear: number = new Date().getFullYear()
+): SiataLayerMonthlyRow[] {
+  const serieMensual = sensor.atributos?.serie_mensual
+  if (!serieMensual) return []
+
+  const stationCode =
+    sensor.atributos?.descripcion?.Codigo?.valor_alfanumerico ?? null
+
+  if (!stationCode) return []
+
+  const rows: SiataLayerMonthlyRow[] = []
+
+  for (const [key, value] of Object.entries(serieMensual)) {
+    if (!key.startsWith("P_ACUM_")) continue
+    const month = MONTH_KEY_MAP[key]
+    if (!month) continue
+
+    rows.push({
+      stationCode,
+      calendarYear,
+      month,
+      rainMm: parseMm(value.valor_alfanumerico ?? "0"),
+    })
+  }
+
+  return rows.sort((a, b) => a.month - b.month)
+}
+
+export function parseSiataLayerStationMetadata(sensor: SiataFeature) {
+  const descripcion = sensor.atributos?.descripcion
+  if (!descripcion) return null
+
+  const stationCode = descripcion.Codigo?.valor_alfanumerico
+  if (!stationCode) return null
+
+  return {
+    stationCode,
+    stationName:
+      descripcion.Nombre?.valor_alfanumerico ??
+      descripcion.NombreEstacion?.valor_alfanumerico ??
+      `Estación ${stationCode}`,
+    city: descripcion.Municipio?.valor_alfanumerico ?? null,
+  }
+}

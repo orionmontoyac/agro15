@@ -5,13 +5,25 @@ import {
   URRAO_MUNICIPALITY,
   type SiataRainLayerResponse,
 } from "./siata-fetch"
+import { URRAO_STATION_CODE } from "./geoportal-rain"
+import {
+  computeMonthlyFromDailyRows,
+  computePeriodsFromDailyRows,
+  getRainDailyFromDb,
+  getRainMonthlyFromDb,
+} from "./rain-db"
 
-export { URRAO_MUNICIPALITY }
+export { URRAO_MUNICIPALITY, URRAO_STATION_CODE }
 
 export type RainfallMonthlyPoint = {
   month: number
   label: string
   shortLabel: string
+  rainMm: number
+}
+
+export type RainfallDailyPoint = {
+  date: string
   rainMm: number
 }
 
@@ -26,6 +38,8 @@ export type RainfallData = {
   current: { rainMm5m: number; updatedAt: string } | null
   periods: RainfallPeriods | null
   monthly: RainfallMonthlyPoint[]
+  daily: RainfallDailyPoint[]
+  dataSource: "db" | "layer" | "mixed"
 }
 
 const MONTH_LABELS = [
@@ -101,7 +115,7 @@ export function parseMonthlySeries(
     .sort((a, b) => a.month - b.month)
 }
 
-function parsePeriods(
+function parsePeriodsFromLayer(
   descripcion: Record<string, { valor_alfanumerico?: string }> | undefined
 ): RainfallPeriods | null {
   const rain24h = getAttributeValue(descripcion, "D_24_H")
@@ -117,30 +131,34 @@ function parsePeriods(
   }
 }
 
-export function parseRainfallData(
+function parseCurrentFromLayer(
+  descripcion: Record<string, { valor_alfanumerico?: string }> | undefined
+): { rainMm5m: number; updatedAt: string } | null {
+  const rainRaw = getAttributeValue(descripcion, "D_5_m")
+  const updatedAtRaw = getAttributeValue(
+    descripcion,
+    "fecha_ultima_actualizacion"
+  )
+
+  if (!rainRaw || !updatedAtRaw) return null
+
+  return {
+    rainMm5m: parseMm(rainRaw),
+    updatedAt: updatedAtRaw,
+  }
+}
+
+export function parseRainfallDataFromLayer(
   data: SiataRainLayerResponse
 ): RainfallData | null {
   const sensor = getUrraoSensor(data)
   if (!sensor?.atributos) return null
 
   const descripcion = sensor.atributos.descripcion
-  const rainRaw = getAttributeValue(descripcion, "D_5_m")
-  const updatedAtRaw = getAttributeValue(
-    descripcion,
-    "fecha_ultima_actualizacion"
-  )
   const stationCode = getAttributeValue(descripcion, "Codigo") ?? undefined
-
   const monthly = parseMonthlySeries(sensor.atributos.serie_mensual)
-  const periods = parsePeriods(descripcion)
-
-  const current =
-    rainRaw && updatedAtRaw
-      ? {
-          rainMm5m: parseMm(rainRaw),
-          updatedAt: updatedAtRaw,
-        }
-      : null
+  const periods = parsePeriodsFromLayer(descripcion)
+  const current = parseCurrentFromLayer(descripcion)
 
   if (!current && monthly.length === 0 && !periods) return null
 
@@ -153,6 +171,8 @@ export function parseRainfallData(
     current,
     periods,
     monthly,
+    daily: [],
+    dataSource: "layer",
   }
 }
 
@@ -179,11 +199,69 @@ export function getRecentRainStatus(periods: RainfallPeriods | null): string {
   return "Sin lluvia en al menos 3 días"
 }
 
+async function fetchLiveCurrentRain(): Promise<{
+  current: RainfallData["current"]
+  stationCode?: string
+}> {
+  try {
+    const layer = await fetchSiataRainLayer()
+    if (!layer) return { current: null }
+
+    const sensor = getUrraoSensor(layer)
+    const descripcion = sensor?.atributos?.descripcion
+    const current = parseCurrentFromLayer(descripcion)
+    const stationCode = getAttributeValue(descripcion, "Codigo") ?? undefined
+
+    return { current, stationCode }
+  } catch {
+    return { current: null }
+  }
+}
+
 export async function getRainfallData(): Promise<RainfallData | null> {
+  const calendarYear = new Date().getFullYear()
+  const [{ station, daily: dbDaily }, dbMonthly] = await Promise.all([
+    getRainDailyFromDb(URRAO_STATION_CODE),
+    getRainMonthlyFromDb(URRAO_STATION_CODE, calendarYear),
+  ])
+  const live = await fetchLiveCurrentRain()
+
+  if (dbDaily.length > 0) {
+    const dbRows = dbDaily.map((row) => ({
+      rain_date: row.rainDate,
+      rain_mm_avg: row.rainMm,
+      rain_mm_pluvio_1: row.rainMmPluvio1,
+      rain_mm_pluvio_2: row.rainMmPluvio2,
+    }))
+
+    const periods = computePeriodsFromDailyRows(dbRows)
+    const monthly =
+      dbMonthly.length > 0
+        ? dbMonthly
+        : computeMonthlyFromDailyRows(dbRows)
+    const daily: RainfallDailyPoint[] = dbDaily.map((row) => ({
+      date: row.rainDate,
+      rainMm: row.rainMm,
+    }))
+
+    return {
+      location: {
+        municipality: station?.city ?? URRAO_MUNICIPALITY,
+        region: "Antioquia",
+        stationCode: station?.stationCode ?? URRAO_STATION_CODE,
+      },
+      current: live.current,
+      periods,
+      monthly,
+      daily,
+      dataSource: live.current ? "mixed" : "db",
+    }
+  }
+
   try {
     const layer = await fetchSiataRainLayer()
     if (!layer) return null
-    return parseRainfallData(layer)
+    return parseRainfallDataFromLayer(layer)
   } catch {
     return null
   }

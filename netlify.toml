@@ -21,3 +21,10 @@
 
 [functions."sync-sipsa-insumos"]
   schedule = "0 11 12 * *"
+
+[[edge_functions]]
+  path = "/api/siata-rain/sync"
+  function = "siata-rain-sync"
+
+[functions."sync-siata-rain"]
+  schedule = "0 */6 * * *"
