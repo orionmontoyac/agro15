@@ -40,7 +40,10 @@ export default async function LluviasPage() {
                 <RainDailyChart daily={rainfall.daily} />
               ) : null}
               {rainfall.monthly.length > 0 && (
-                <RainMonthlyChart monthly={rainfall.monthly} />
+                <RainMonthlyChart
+                  monthly={rainfall.monthly}
+                  calendarYear={new Date().getFullYear()}
+                />
               )}
             </div>
           )}

@@ -4,12 +4,12 @@ import {
   URRAO_STATION_CODE,
   type GeoportalRainDailyRow,
   type GeoportalStationMetadata,
-} from "../../lib/rain/geoportal-rain"
+} from "./lib/geoportal-rain.ts"
 import {
   fetchSiataRainLayer,
   getUrraoSensor,
   parseSiataLayerMonthlyRows,
-} from "../../lib/rain/siata-fetch"
+} from "./lib/siata-fetch.ts"
 
 type EdgeEnv = {
   SUPABASE_URL?: string

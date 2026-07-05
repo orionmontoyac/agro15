@@ -31,15 +31,21 @@ function formatRainMm(value: number): string {
 
 type RainMonthlyChartProps = {
   monthly: RainfallMonthlyPoint[]
+  calendarYear?: number
 }
 
-export function RainMonthlyChart({ monthly }: RainMonthlyChartProps) {
+export function RainMonthlyChart({
+  monthly,
+  calendarYear = new Date().getFullYear(),
+}: RainMonthlyChartProps) {
   const stats = React.useMemo(() => {
     if (monthly.length === 0) return null
 
-    const values = monthly.map((point) => point.rainMm)
+    const currentMonth = new Date().getMonth() + 1
+    const eligible = monthly.filter((point) => point.month <= currentMonth)
+    const values = eligible.map((point) => point.rainMm)
     const total = values.reduce((sum, value) => sum + value, 0)
-    const maxPoint = monthly.reduce((best, point) =>
+    const maxPoint = eligible.reduce((best, point) =>
       point.rainMm > best.rainMm ? point : best
     )
 
@@ -64,7 +70,7 @@ export function RainMonthlyChart({ monthly }: RainMonthlyChartProps) {
       <CardHeader>
         <CardTitle>Lluvia mensual acumulada</CardTitle>
         <CardDescription>
-          Precipitación acumulada por mes en milímetros (mm)
+          Precipitación acumulada por mes en {calendarYear} (mm)
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -121,7 +127,7 @@ export function RainMonthlyChart({ monthly }: RainMonthlyChartProps) {
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-xs text-muted-foreground">
-                Total acumulado (año)
+                Total acumulado ({calendarYear})
               </span>
               <span className="text-sm font-semibold tabular-nums">
                 {formatRainMm(stats.total)}

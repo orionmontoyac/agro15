@@ -115,6 +115,22 @@ export function parseMonthlySeries(
     .sort((a, b) => a.month - b.month)
 }
 
+export function buildFullYearMonthlySeries(
+  points: RainfallMonthlyPoint[]
+): RainfallMonthlyPoint[] {
+  const byMonth = new Map(points.map((point) => [point.month, point.rainMm]))
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1
+    return {
+      month,
+      label: MONTH_LABELS[index] ?? String(month),
+      shortLabel: MONTH_SHORT_LABELS[index] ?? String(month),
+      rainMm: byMonth.get(month) ?? 0,
+    }
+  })
+}
+
 function parsePeriodsFromLayer(
   descripcion: Record<string, { valor_alfanumerico?: string }> | undefined
 ): RainfallPeriods | null {
@@ -156,7 +172,9 @@ export function parseRainfallDataFromLayer(
 
   const descripcion = sensor.atributos.descripcion
   const stationCode = getAttributeValue(descripcion, "Codigo") ?? undefined
-  const monthly = parseMonthlySeries(sensor.atributos.serie_mensual)
+  const monthly = buildFullYearMonthlySeries(
+    parseMonthlySeries(sensor.atributos.serie_mensual)
+  )
   const periods = parsePeriodsFromLayer(descripcion)
   const current = parseCurrentFromLayer(descripcion)
 
@@ -189,7 +207,7 @@ export function getRecentRainStatus(periods: RainfallPeriods | null): string {
   if (!periods) return "Datos de periodo no disponibles"
 
   if (periods.rainMm24h > 0) {
-    return "Lluvia registrada en las últimas 24 horas"
+    return "Lluvia registrada en las últimas 72 horas"
   }
 
   if (periods.rainMm72h > 0) {
@@ -199,23 +217,97 @@ export function getRecentRainStatus(periods: RainfallPeriods | null): string {
   return "Sin lluvia en al menos 3 días"
 }
 
-async function fetchLiveCurrentRain(): Promise<{
+function getBogotaDateIso(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+  }).format(date)
+}
+
+function addDaysToIsoDate(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split("-").map(Number)
+  const shifted = new Date(Date.UTC(year, month - 1, day + days))
+  return shifted.toISOString().slice(0, 10)
+}
+
+export function computeDaysWithoutRain(
+  daily: RainfallDailyPoint[],
+  currentRainMm5m?: number | null
+): number | null {
+  if (currentRainMm5m != null && currentRainMm5m > 0) return 0
+
+  const byDate = new Map(daily.map((row) => [row.date, row.rainMm]))
+  if (byDate.size === 0) return null
+
+  let count = 0
+  let dateIso = getBogotaDateIso()
+
+  while (count < 366) {
+    const isToday = dateIso === getBogotaDateIso()
+
+    if (isToday) {
+      const todayRain = byDate.get(dateIso)
+      if (todayRain !== undefined && todayRain > 0) break
+      count++
+    } else {
+      const rain = byDate.get(dateIso)
+      if (rain === undefined) break
+      if (rain > 0) break
+      count++
+    }
+
+    dateIso = addDaysToIsoDate(dateIso, -1)
+  }
+
+  return count
+}
+
+export function formatDaysWithoutRainLabel(days: number | null): string {
+  if (days === null) return "Requiere historial diario sincronizado"
+  if (days === 0) return "Lluvia registrada recientemente"
+  if (days === 1) return "1 día consecutivo sin lluvia"
+  return `${days} días consecutivos sin lluvia`
+}
+
+async function fetchLiveSiataLayerContext(): Promise<{
   current: RainfallData["current"]
   stationCode?: string
+  monthly: RainfallMonthlyPoint[]
 }> {
   try {
     const layer = await fetchSiataRainLayer()
-    if (!layer) return { current: null }
+    if (!layer) return { current: null, monthly: [] }
 
     const sensor = getUrraoSensor(layer)
     const descripcion = sensor?.atributos?.descripcion
     const current = parseCurrentFromLayer(descripcion)
     const stationCode = getAttributeValue(descripcion, "Codigo") ?? undefined
+    const monthly = buildFullYearMonthlySeries(
+      parseMonthlySeries(sensor?.atributos?.serie_mensual)
+    )
 
-    return { current, stationCode }
+    return { current, stationCode, monthly }
   } catch {
-    return { current: null }
+    return { current: null, monthly: [] }
   }
+}
+
+function resolveMonthlySeries(
+  layerMonthly: RainfallMonthlyPoint[],
+  dbMonthly: RainfallMonthlyPoint[],
+  dailyRows: {
+    rain_date: string
+    rain_mm_avg: number
+    rain_mm_pluvio_1: number
+    rain_mm_pluvio_2: number
+  }[]
+): RainfallMonthlyPoint[] {
+  if (layerMonthly.length === 12) return layerMonthly
+
+  if (dbMonthly.length > 0) {
+    return buildFullYearMonthlySeries(dbMonthly)
+  }
+
+  return buildFullYearMonthlySeries(computeMonthlyFromDailyRows(dailyRows))
 }
 
 export async function getRainfallData(): Promise<RainfallData | null> {
@@ -224,7 +316,7 @@ export async function getRainfallData(): Promise<RainfallData | null> {
     getRainDailyFromDb(URRAO_STATION_CODE),
     getRainMonthlyFromDb(URRAO_STATION_CODE, calendarYear),
   ])
-  const live = await fetchLiveCurrentRain()
+  const live = await fetchLiveSiataLayerContext()
 
   if (dbDaily.length > 0) {
     const dbRows = dbDaily.map((row) => ({
@@ -235,10 +327,7 @@ export async function getRainfallData(): Promise<RainfallData | null> {
     }))
 
     const periods = computePeriodsFromDailyRows(dbRows)
-    const monthly =
-      dbMonthly.length > 0
-        ? dbMonthly
-        : computeMonthlyFromDailyRows(dbRows)
+    const monthly = resolveMonthlySeries(live.monthly, dbMonthly, dbRows)
     const daily: RainfallDailyPoint[] = dbDaily.map((row) => ({
       date: row.rainDate,
       rainMm: row.rainMm,
