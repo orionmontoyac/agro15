@@ -11,7 +11,6 @@ import {
 } from "./price-trend"
 import {
   buildChartSeries,
-  buildPeriodSummariesByCity,
   computeChangePct,
   computeTrend,
   fetchPriceRows,
@@ -20,7 +19,6 @@ import {
   getLatestPrice,
   getLatestPriceForCity,
   type ChartPoint,
-  type PeriodSummary,
   type RawPriceRow,
 } from "./price-fetch"
 import { getProductSupply, type ProductSupplySummary } from "./supply-data"
@@ -76,7 +74,6 @@ export type CitySummary = {
   lastDate: string
 }
 
-export type { PeriodSummary } from "./price-fetch"
 export type { ProductSupplySummary } from "./supply-data"
 
 export type { ProductPriceTrend, CityPriceTrendInsight } from "./price-trend"
@@ -94,12 +91,6 @@ export type ProductDetail = {
   medellin: CitySummary | null
   bogota: CitySummary | null
   chartSeries: ChartPoint[]
-  chartSeriesWeek: ChartPoint[]
-  chartSeriesMonth: ChartPoint[]
-  periodSummaries: {
-    medellin: { week: PeriodSummary | null; month: PeriodSummary | null }
-    bogota: { week: PeriodSummary | null; month: PeriodSummary | null }
-  }
   supply: ProductSupplySummary
   lastSevenDays: MergedDailyPriceEntry[]
   priceTrend: ProductPriceTrend
@@ -312,18 +303,8 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
   const product = await getProductByCode(code)
   if (!product) return null
 
-  const [dailyRows, aggregateRows, heatmapRows, supply] = await Promise.all([
+  const [dailyRows, heatmapRows, supply] = await Promise.all([
     fetchPriceRows({ productIds: [product.id], reportType: "day", days: 365 * 5 }),
-    fetchPriceRows({ productIds: [product.id], days: 730, reportType: "week" }).then(
-      async (weekRows) => {
-        const monthRows = await fetchPriceRows({
-          productIds: [product.id],
-          days: 730,
-          reportType: "month",
-        })
-        return [...weekRows, ...monthRows]
-      }
-    ),
     fetchPriceRows({
       productIds: [product.id],
       reportType: "day",
@@ -333,7 +314,6 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
   ])
 
   const rows = dailyRows
-  const allRows = [...dailyRows, ...aggregateRows]
   const hasPriceData = rows.length > 0
 
   const medellin = buildCitySummary(
@@ -344,9 +324,6 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
   )
   const bogota = buildCitySummary(rows, code, BOGOTA_CODE, "Bogotá")
   const chartSeries = buildChartSeries(rows, code, "day")
-  const chartSeriesWeek = buildChartSeries(allRows, code, "week")
-  const chartSeriesMonth = buildChartSeries(allRows, code, "month")
-  const periodSummaries = buildPeriodSummariesByCity(allRows, code)
   const lastSevenDays = buildLastSevenMerged(rows, code)
   const priceTrend = buildProductPriceTrend(lastSevenDays)
   const monthlyHeatmap = {
@@ -363,9 +340,6 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
     medellin,
     bogota,
     chartSeries,
-    chartSeriesWeek,
-    chartSeriesMonth,
-    periodSummaries,
     supply,
     lastSevenDays,
     priceTrend,
