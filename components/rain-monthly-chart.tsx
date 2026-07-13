@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from "recharts"
 
 import {
   Card,
@@ -16,7 +16,9 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type { RainfallMonthlyPoint } from "@/lib/rain/rain-data"
+import { cn } from "@/lib/utils"
 
 const chartConfig = {
   rainMm: {
@@ -29,6 +31,12 @@ function formatRainMm(value: number): string {
   return `${value.toFixed(1)} mm`
 }
 
+function formatBarLabel(value: unknown, compact: boolean): string {
+  const rainMm = Number(value)
+  if (!Number.isFinite(rainMm) || rainMm <= 0) return ""
+  return compact ? `${rainMm.toFixed(0)} mm` : `${rainMm.toFixed(1)} mm`
+}
+
 type RainMonthlyChartProps = {
   monthly: RainfallMonthlyPoint[]
   calendarYear?: number
@@ -38,6 +46,8 @@ export function RainMonthlyChart({
   monthly,
   calendarYear = new Date().getFullYear(),
 }: RainMonthlyChartProps) {
+  const isMobile = useIsMobile()
+
   const stats = React.useMemo(() => {
     if (monthly.length === 0) return null
 
@@ -74,46 +84,81 @@ export function RainMonthlyChart({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="aspect-auto h-[280px] w-full">
-          <BarChart data={monthly} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="shortLabel"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-            />
-            <YAxis
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              width={48}
-              tickFormatter={(value) => `${value}`}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  labelFormatter={(_, payload) => {
-                    const point = payload?.[0]?.payload as
-                      | RainfallMonthlyPoint
-                      | undefined
-                    return point?.label ?? ""
-                  }}
-                  formatter={(value) => (
-                    <span className="font-mono font-medium tabular-nums">
-                      {formatRainMm(Number(value))}
-                    </span>
+        <div
+          className={cn(
+            isMobile && "-mx-2 overflow-x-auto overscroll-x-contain px-2 pb-1"
+          )}
+        >
+          <ChartContainer
+            config={chartConfig}
+            className={cn(
+              "aspect-auto w-full",
+              isMobile ? "h-[250px] min-w-md" : "h-[280px]"
+            )}
+          >
+            <BarChart
+              data={monthly}
+              margin={{
+                left: isMobile ? 0 : 8,
+                right: isMobile ? 4 : 8,
+                top: isMobile ? 32 : 28,
+                bottom: isMobile ? 4 : 0,
+              }}
+              barCategoryGap={isMobile ? "12%" : "18%"}
+            >
+              <CartesianGrid vertical={false} />
+              <XAxis
+                dataKey="shortLabel"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={isMobile ? 4 : 8}
+                tick={{ fontSize: isMobile ? 10 : 12 }}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={isMobile ? 2 : 8}
+                width={isMobile ? 28 : 48}
+                tickCount={isMobile ? 4 : 5}
+                tick={{ fontSize: isMobile ? 10 : 12 }}
+                tickFormatter={(value) => `${value}`}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(_, payload) => {
+                      const point = payload?.[0]?.payload as
+                        | RainfallMonthlyPoint
+                        | undefined
+                      return point?.label ?? ""
+                    }}
+                    formatter={(value) => (
+                      <span className="font-mono font-medium tabular-nums">
+                        {formatRainMm(Number(value))}
+                      </span>
+                    )}
+                  />
+                }
+              />
+              <Bar
+                dataKey="rainMm"
+                fill="var(--color-rainMm)"
+                radius={[4, 4, 0, 0]}
+              >
+                <LabelList
+                  dataKey="rainMm"
+                  position="top"
+                  offset={isMobile ? 4 : 6}
+                  className={cn(
+                    "fill-foreground tabular-nums",
+                    isMobile ? "text-[9px]" : "text-[10px]"
                   )}
+                  formatter={(value) => formatBarLabel(value, isMobile)}
                 />
-              }
-            />
-            <Bar
-              dataKey="rainMm"
-              fill="var(--color-rainMm)"
-              radius={[4, 4, 0, 0]}
-            />
-          </BarChart>
-        </ChartContainer>
+              </Bar>
+            </BarChart>
+          </ChartContainer>
+        </div>
 
         {stats && (
           <div className="mt-4 grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2">

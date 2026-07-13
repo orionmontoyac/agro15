@@ -6,6 +6,7 @@ import {
   type SiataRainLayerResponse,
 } from "./siata-fetch"
 import { URRAO_STATION_CODE } from "./geoportal-rain"
+import { addDaysToIsoDate, getBogotaDateIso } from "./dates"
 import {
   computeMonthlyFromDailyRows,
   computePeriodsFromDailyRows,
@@ -217,18 +218,6 @@ export function getRecentRainStatus(periods: RainfallPeriods | null): string {
   return "Sin lluvia en al menos 3 días"
 }
 
-function getBogotaDateIso(date: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Bogota",
-  }).format(date)
-}
-
-function addDaysToIsoDate(isoDate: string, days: number): string {
-  const [year, month, day] = isoDate.split("-").map(Number)
-  const shifted = new Date(Date.UTC(year, month - 1, day + days))
-  return shifted.toISOString().slice(0, 10)
-}
-
 export function computeDaysWithoutRain(
   daily: RainfallDailyPoint[],
   currentRainMm5m?: number | null
@@ -238,18 +227,31 @@ export function computeDaysWithoutRain(
   const byDate = new Map(daily.map((row) => [row.date, row.rainMm]))
   if (byDate.size === 0) return null
 
+  const bogotaToday = getBogotaDateIso()
+  // SIATA may already open the next calendar-day bucket (UTC/ahead of Bogotá).
+  // Start from the latest observation so recent rain on that tip is not ignored.
+  let latestDataDate = bogotaToday
+  for (const date of byDate.keys()) {
+    if (date > latestDataDate) latestDataDate = date
+  }
+
   let count = 0
-  let dateIso = getBogotaDateIso()
+  let dateIso = latestDataDate
 
   while (count < 366) {
-    const isToday = dateIso === getBogotaDateIso()
+    const rain = byDate.get(dateIso)
+    const isTipDay = dateIso >= bogotaToday
 
-    if (isToday) {
-      const todayRain = byDate.get(dateIso)
-      if (todayRain !== undefined && todayRain > 0) break
+    if (isTipDay) {
+      if (rain !== undefined && rain > 0) break
+      // Skip ahead-of-Bogotá empty/zero buckets without counting them as dry.
+      if (dateIso > bogotaToday) {
+        dateIso = addDaysToIsoDate(dateIso, -1)
+        continue
+      }
+      // Bogotá today with missing or zero rain still counts as a dry day.
       count++
     } else {
-      const rain = byDate.get(dateIso)
       if (rain === undefined) break
       if (rain > 0) break
       count++

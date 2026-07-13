@@ -6,7 +6,6 @@ import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { ProductCityCards } from "@/components/product-city-cards"
 import { ProductLastSevenDays } from "@/components/product-last-seven-days"
 import { ProductMonthlyHeatmap } from "@/components/product-monthly-heatmap"
-import { ProductPeriodSummary } from "@/components/product-period-summary"
 import { ProductPriceTrend } from "@/components/product-price-trend"
 import { ProductSupplySection } from "@/components/product-supply-section"
 import {
@@ -19,7 +18,7 @@ import {
   MUNICIPALITY_FILTER_OPTIONS,
   type MunicipalityFilter,
 } from "@/lib/sipsa/constants"
-import type { ChartPoint, PeriodSummary } from "@/lib/sipsa/price-fetch"
+import type { ChartPoint } from "@/lib/sipsa/price-fetch"
 import type {
   CitySummary,
   MergedDailyPriceEntry,
@@ -33,12 +32,6 @@ type ProductDetailContentProps = {
   medellin: CitySummary | null
   bogota: CitySummary | null
   chartSeries: ChartPoint[]
-  chartSeriesWeek: ChartPoint[]
-  chartSeriesMonth: ChartPoint[]
-  periodSummaries: {
-    medellin: { week: PeriodSummary | null; month: PeriodSummary | null }
-    bogota: { week: PeriodSummary | null; month: PeriodSummary | null }
-  }
   supply: ProductSupplySummary
   lastSevenDays: MergedDailyPriceEntry[]
   priceTrend: ProductPriceTrendData
@@ -53,9 +46,6 @@ export function ProductDetailContent({
   medellin,
   bogota,
   chartSeries,
-  chartSeriesWeek,
-  chartSeriesMonth,
-  periodSummaries,
   supply,
   lastSevenDays,
   priceTrend,
@@ -99,13 +89,6 @@ export function ProductDetailContent({
       <ProductCityCards
         medellin={medellin}
         bogota={bogota}
-        showMedellin={showMedellin}
-        showBogota={showBogota}
-      />
-
-      <ProductPeriodSummary
-        medellin={periodSummaries.medellin}
-        bogota={periodSummaries.bogota}
         showMedellin={showMedellin}
         showBogota={showBogota}
       />

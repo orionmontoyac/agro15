@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 
+import { addDaysToIsoDate, getBogotaDateIso } from "./dates"
 import { URRAO_STATION_CODE } from "./geoportal-rain"
 
 export type RainDailyDbRow = {
@@ -26,13 +27,17 @@ type DbDailyRow = {
 }
 
 function sumRainForDays(rows: DbDailyRow[], days: number): number {
-  const cutoff = new Date()
-  cutoff.setHours(0, 0, 0, 0)
-  cutoff.setDate(cutoff.getDate() - days + 1)
-  const cutoffIso = cutoff.toISOString().slice(0, 10)
+  // Use Bogotá calendar dates so period totals match the dry-day streak.
+  const bogotaToday = getBogotaDateIso()
+  let latestDataDate = bogotaToday
+  for (const row of rows) {
+    if (row.rain_date > latestDataDate) latestDataDate = row.rain_date
+  }
+  const endIso = latestDataDate
+  const cutoffIso = addDaysToIsoDate(endIso, -days + 1)
 
   return rows
-    .filter((row) => row.rain_date >= cutoffIso)
+    .filter((row) => row.rain_date >= cutoffIso && row.rain_date <= endIso)
     .reduce((sum, row) => sum + Number(row.rain_mm_avg), 0)
 }
 
