@@ -4,6 +4,7 @@ import * as React from "react"
 import { ChevronRightIcon, MinusIcon, SearchIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 
+import { FavoriteStarButton } from "@/components/favorite-star-button"
 import { ProductPriceSparkline } from "@/components/product-price-sparkline"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,6 +28,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
+import { useProductFavorites } from "@/hooks/use-product-favorites"
 import {
   getContextDateLabel,
   isTodayOrYesterday,
@@ -37,7 +39,13 @@ import { cn } from "@/lib/utils"
 const PAGE_SIZE = 25
 
 type SortOption = "recent" | "name" | "change-desc" | "change-asc"
-type TrendFilter = "all" | "Subiendo" | "Bajando" | "Estable" | "con-precios"
+type TrendFilter =
+  | "all"
+  | "favoritos"
+  | "Subiendo"
+  | "Bajando"
+  | "Estable"
+  | "con-precios"
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "recent", label: "Más reciente" },
@@ -230,6 +238,8 @@ type ProductsTableProps = {
 
 export function ProductsTable({ products }: ProductsTableProps) {
   const router = useRouter()
+  const { isFavorite, toggleFavorite, sortWithFavorites, favorites } =
+    useProductFavorites()
   const [search, setSearch] = React.useState("")
   const [page, setPage] = React.useState(1)
   const [sort, setSort] = React.useState<SortOption>("recent")
@@ -250,14 +260,24 @@ export function ProductsTable({ products }: ProductsTableProps) {
       )
     }
 
-    if (trendFilter === "con-precios") {
+    if (trendFilter === "favoritos") {
+      result = result.filter((product) => isFavorite(product.code))
+    } else if (trendFilter === "con-precios") {
       result = result.filter(hasAnyPrice)
     } else if (trendFilter !== "all") {
       result = result.filter((product) => product.trendLabel === trendFilter)
     }
 
-    return sortProducts(result, sort)
-  }, [products, search, sort, trendFilter])
+    return sortWithFavorites(sortProducts(result, sort))
+  }, [
+    favorites,
+    isFavorite,
+    products,
+    search,
+    sort,
+    sortWithFavorites,
+    trendFilter,
+  ])
 
   const totalPages = Math.max(
     1,
@@ -335,6 +355,7 @@ export function ProductsTable({ products }: ProductsTableProps) {
             aria-label="Filtrar por tendencia"
           >
             <ToggleGroupItem value="all">Todos</ToggleGroupItem>
+            <ToggleGroupItem value="favoritos">Favoritos</ToggleGroupItem>
             <ToggleGroupItem value="Subiendo">Subiendo</ToggleGroupItem>
             <ToggleGroupItem value="Bajando">Bajando</ToggleGroupItem>
             <ToggleGroupItem value="Estable">Estable</ToggleGroupItem>
@@ -347,6 +368,7 @@ export function ProductsTable({ products }: ProductsTableProps) {
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
             <TableRow className="hover:bg-transparent">
+              <TableHead className="h-9 w-10 px-2" aria-label="Favorito" />
               <TableHead className="h-9 px-4 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
                 Producto
               </TableHead>
@@ -366,7 +388,7 @@ export function ProductsTable({ products }: ProductsTableProps) {
             {paginatedProducts.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="h-28 px-4 text-center text-sm text-muted-foreground"
                 >
                   No se encontraron productos
@@ -388,6 +410,14 @@ export function ProductsTable({ products }: ProductsTableProps) {
                     }
                   }}
                 >
+                  <TableCell className="px-2 py-2.5 align-middle">
+                    <FavoriteStarButton
+                      productCode={product.code}
+                      productName={product.name}
+                      isFavorite={isFavorite(product.code)}
+                      onToggle={toggleFavorite}
+                    />
+                  </TableCell>
                   <TableCell className="px-4 py-2.5 align-middle whitespace-normal">
                     <div className="flex min-w-[120px] max-w-[200px] flex-col gap-1">
                       <p className="line-clamp-2 text-sm leading-snug font-medium">

@@ -48,6 +48,7 @@ import {
   type LocalProjection,
 } from "@/lib/proyecciones-local"
 import type { MonthlyProjectionRow, ScenarioKey } from "@/lib/projections"
+import { useProductFavorites } from "@/hooks/use-product-favorites"
 import { cn } from "@/lib/utils"
 
 function formatCop(value: number): string {
@@ -141,13 +142,18 @@ type ProyeccionesWorkspaceProps = {
 }
 
 export function ProyeccionesWorkspace({ products }: ProyeccionesWorkspaceProps) {
+  const { isFavorite, sortWithFavorites } = useProductFavorites()
+  const orderedProducts = React.useMemo(
+    () => sortWithFavorites(products),
+    [products, sortWithFavorites]
+  )
   const defaultProduct =
-    products.find((p) => p.code === "106") ?? products[0] ?? null
+    orderedProducts.find((p) => p.code === "106") ?? orderedProducts[0] ?? null
 
   const [productId, setProductId] = React.useState<string>(
     defaultProduct ? String(defaultProduct.id) : ""
   )
-  const selected = products.find((p) => String(p.id) === productId) ?? null
+  const selected = orderedProducts.find((p) => String(p.id) === productId) ?? null
 
   const [cantidad, setCantidad] = React.useState("500")
   const [submitting, setSubmitting] = React.useState(false)
@@ -256,8 +262,9 @@ export function ProyeccionesWorkspace({ products }: ProyeccionesWorkspaceProps) 
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="max-h-72">
-                    {products.map((product) => (
+                    {orderedProducts.map((product) => (
                       <SelectItem key={product.id} value={String(product.id)}>
+                        {isFavorite(product.code) ? "★ " : ""}
                         {product.name}
                       </SelectItem>
                     ))}
