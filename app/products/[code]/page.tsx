@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 
 import { AppShell } from "@/components/app-shell"
 import { ProductDetailContent } from "@/components/product-detail-content"
+import { ProductFavoriteControl } from "@/components/product-favorite-control"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -75,13 +76,19 @@ export default async function ProductDetailPage({
             </BreadcrumbList>
           </Breadcrumb>
 
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
-              {product.name}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Código SIPSA: {product.code}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                {product.name}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Código SIPSA: {product.code}
+              </p>
+            </div>
+            <ProductFavoriteControl
+              productCode={product.code}
+              productName={product.name}
+            />
           </div>
 
           {!hasPriceData ? (

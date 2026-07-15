@@ -18,7 +18,8 @@
     "sync:sipsa-supply": "node --env-file=.env.local scripts/sync-sipsa-supply.mjs",
     "sync:sipsa-insumos": "node --env-file=.env.local scripts/sync-sipsa-insumos.mjs",
     "sync:siata-rain": "node --env-file=.env.local scripts/sync-siata-rain.mjs",
-    "probe:sipsa-soap": "node scripts/probe-sipsa-soap.mjs"
+    "probe:sipsa-soap": "node scripts/probe-sipsa-soap.mjs",
+    "test:projections": "tsx scripts/test-projections.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

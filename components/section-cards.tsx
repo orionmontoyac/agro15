@@ -1,7 +1,10 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
+import { TrendingDownIcon, TrendingUpIcon } from "lucide-react"
 
+import { FavoriteStarButton } from "@/components/favorite-star-button"
 import { ProductPriceSparkline } from "@/components/product-price-sparkline"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
@@ -14,13 +17,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { useProductFavorites } from "@/hooks/use-product-favorites"
 import {
   getContextDateLabel,
   isTodayOrYesterday,
 } from "@/lib/sipsa/date-labels"
 import type { KpiCard } from "@/lib/sipsa/dashboard-data"
 import { cn } from "@/lib/utils"
-import { TrendingDownIcon, TrendingUpIcon } from "lucide-react"
 
 function formatPrice(price: number): string {
   return (
@@ -57,6 +60,12 @@ type SectionCardsProps = {
 }
 
 export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
+  const { isFavorite, toggleFavorite, sortWithFavorites } = useProductFavorites()
+  const orderedKpis = React.useMemo(
+    () => sortWithFavorites(kpis),
+    [kpis, sortWithFavorites]
+  )
+
   const avgTrend =
     avgChangePct === null
       ? "Estable"
@@ -71,15 +80,16 @@ export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
       <div className="px-4 lg:px-6">
         <h2 className="text-lg font-semibold">Últimos precios de productos</h2>
         <p className="text-sm text-muted-foreground">
-          Precios más recientes en mercados mayoristas. Selecciona un producto
-          para ver su historial y estadísticas.
+          Precios más recientes en mercados mayoristas. Marca con ★ tus favoritos
+          para verlos primero.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 px-4 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 lg:px-6 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/10 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs dark:*:data-[slot=card]:bg-card">
-        {kpis.map((kpi) => {
+        {orderedKpis.map((kpi) => {
           const dateLabel = kpi.priceDate
             ? getContextDateLabel(kpi.priceDate)
             : null
+          const favorited = isFavorite(kpi.code)
 
           return (
             <Link
@@ -88,9 +98,17 @@ export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
               className="block min-w-0 rounded-xl transition-colors hover:ring-2 hover:ring-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Card className="@container/card h-full">
-                <CardHeader className="gap-2 max-sm:grid-cols-1 max-sm:[&_[data-slot=card-action]]:col-start-1 max-sm:[&_[data-slot=card-action]]:row-start-auto max-sm:[&_[data-slot=card-action]]:justify-self-start">
-                  <CardTitle className="min-w-0 text-base font-semibold leading-snug break-words sm:text-lg">
-                    {kpi.name}
+                <CardHeader className="gap-2 max-sm:[&_[data-slot=card-action]]:col-start-1 max-sm:[&_[data-slot=card-action]]:row-start-auto max-sm:[&_[data-slot=card-action]]:justify-self-start">
+                  <CardTitle className="flex min-w-0 items-start gap-0.5 text-base font-semibold leading-snug sm:text-lg">
+                    <span className="min-w-0 wrap-break-word">{kpi.name}</span>
+                    <FavoriteStarButton
+                      productCode={kpi.code}
+                      productName={kpi.name}
+                      isFavorite={favorited}
+                      onToggle={toggleFavorite}
+                      size="icon-sm"
+                      className="-mt-0.5 size-7 shrink-0"
+                    />
                   </CardTitle>
                   <CardDescription className="text-xl font-semibold tabular-nums text-foreground">
                     {formatPrice(kpi.price)}
@@ -172,7 +190,7 @@ export function SectionCards({ kpis, avgChangePct }: SectionCardsProps) {
           </CardHeader>
           <CardFooter className="flex-col items-start gap-1.5 text-sm">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
-              Promedio de {kpis.length} productos{" "}
+              Promedio de {orderedKpis.length} productos{" "}
               <TrendIcon trendLabel={avgTrend} />
             </div>
             <div className="text-wrap text-muted-foreground">

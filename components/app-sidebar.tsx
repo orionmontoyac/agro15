@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { LayoutDashboardIcon, UsersIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CloudRainIcon, FlaskConicalIcon, InfoIcon } from "lucide-react"
+import { LayoutDashboardIcon, UsersIcon, DatabaseIcon, FileChartColumnIcon, FileIcon, CloudRainIcon, FlaskConicalIcon, InfoIcon, CalculatorIcon } from "lucide-react"
 
 const data = {
   user: {
@@ -43,6 +43,11 @@ const data = {
       title: "Insumos",
       url: "/insumos",
       icon: <FlaskConicalIcon />,
+    },
+    {
+      title: "Proyecciones",
+      url: "/proyecciones",
+      icon: <CalculatorIcon />,
     },
     {
       title: "Créditos",
