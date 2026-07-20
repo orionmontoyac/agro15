@@ -53,6 +53,12 @@ function parseGeoportalDate(value: string): string | null {
   return datePart
 }
 
+function getBogotaDateIso(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+  }).format(date)
+}
+
 function toNumber(value: unknown): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
@@ -93,10 +99,12 @@ export function parseGeoportalRainResponse(
 
   const station = extractStationMetadata(info, stationCode)
   const daily: GeoportalRainDailyRow[] = []
+  // SIATA sometimes opens tomorrow's bucket; store Bogotá calendar dates only.
+  const bogotaToday = getBogotaDateIso()
 
   for (let i = 0; i < info.Tiempo.length; i++) {
     const rainDate = parseGeoportalDate(info.Tiempo[i] ?? "")
-    if (!rainDate) continue
+    if (!rainDate || rainDate > bogotaToday) continue
 
     const rainMmPluvio1 = toNumber(info.pluvio_1?.[i])
     const rainMmPluvio2 = toNumber(info.pluvio_2?.[i])

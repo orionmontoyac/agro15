@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/chart"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { RainfallDailyPoint } from "@/lib/rain/rain-data"
+import { formatBogotaDayLabel } from "@/lib/rain/dates"
 import { cn } from "@/lib/utils"
 
 const chartConfig = {
@@ -38,11 +39,7 @@ function formatBarLabel(value: unknown): string {
 }
 
 function formatDayLabel(dateIso: string, compact = false): string {
-  const date = new Date(`${dateIso}T12:00:00`)
-  if (compact) {
-    return date.toLocaleDateString("es-CO", { day: "numeric" })
-  }
-  return date.toLocaleDateString("es-CO", { day: "numeric", month: "short" })
+  return formatBogotaDayLabel(dateIso, { compact })
 }
 
 type RainDailyChartProps = {

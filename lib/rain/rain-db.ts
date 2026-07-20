@@ -27,13 +27,15 @@ type DbDailyRow = {
 }
 
 function sumRainForDays(rows: DbDailyRow[], days: number): number {
-  // Use Bogotá calendar dates so period totals match the dry-day streak.
+  // Never include future Bogotá calendar days (SIATA sometimes opens tomorrow).
   const bogotaToday = getBogotaDateIso()
-  let latestDataDate = bogotaToday
+  let endIso: string | null = null
   for (const row of rows) {
-    if (row.rain_date > latestDataDate) latestDataDate = row.rain_date
+    if (row.rain_date > bogotaToday) continue
+    if (endIso == null || row.rain_date > endIso) endIso = row.rain_date
   }
-  const endIso = latestDataDate
+  if (endIso == null) return 0
+
   const cutoffIso = addDaysToIsoDate(endIso, -days + 1)
 
   return rows
@@ -124,12 +126,15 @@ export function mapMonthlyRows(rows: DbMonthlyRow[]): RainfallMonthlyDbPoint[] {
 }
 
 export function mapDailyRows(rows: DbDailyRow[]): RainDailyDbRow[] {
-  return rows.map((row) => ({
-    rainDate: row.rain_date,
-    rainMm: Number(row.rain_mm_avg),
-    rainMmPluvio1: Number(row.rain_mm_pluvio_1),
-    rainMmPluvio2: Number(row.rain_mm_pluvio_2),
-  }))
+  const bogotaToday = getBogotaDateIso()
+  return rows
+    .filter((row) => row.rain_date <= bogotaToday)
+    .map((row) => ({
+      rainDate: row.rain_date,
+      rainMm: Number(row.rain_mm_avg),
+      rainMmPluvio1: Number(row.rain_mm_pluvio_1),
+      rainMmPluvio2: Number(row.rain_mm_pluvio_2),
+    }))
 }
 
 export async function getRainDailyFromDb(
@@ -173,7 +178,12 @@ export async function getRainDailyFromDb(
 
 export async function getRainMonthlyFromDb(
   stationCode: string = URRAO_STATION_CODE,
-  calendarYear: number = new Date().getFullYear()
+  calendarYear: number = Number(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Bogota",
+      year: "numeric",
+    }).format(new Date())
+  )
 ): Promise<RainfallMonthlyDbPoint[]> {
   const supabase = await createClient()
 

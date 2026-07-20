@@ -76,11 +76,15 @@ function CityCard({ summary }: { summary: CitySummary }) {
         </div>
         <div className="text-muted-foreground">
           Actualizado{" "}
-          {new Date(summary.lastDate).toLocaleDateString("es-CO", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-          })}
+          {new Date(`${summary.lastDate}T12:00:00-05:00`).toLocaleDateString(
+            "es-CO",
+            {
+              timeZone: "America/Bogota",
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            }
+          )}
         </div>
       </CardFooter>
     </Card>
