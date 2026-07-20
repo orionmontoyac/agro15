@@ -203,7 +203,8 @@ function formatFullPrice(value: number): string {
 }
 
 function formatChartDate(date: string): string {
-  return new Date(date).toLocaleDateString("es-CO", {
+  return new Date(`${date}T12:00:00-05:00`).toLocaleDateString("es-CO", {
+    timeZone: "America/Bogota",
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -350,14 +351,16 @@ export function ChartAreaInteractive({
 
   const formatXAxisTick = React.useCallback(
     (value: string) => {
-      const date = new Date(value)
+      const date = new Date(`${value}T12:00:00-05:00`)
       if (timeRange === "3y" || timeRange === "5y") {
         return date.toLocaleDateString("es-CO", {
+          timeZone: "America/Bogota",
           month: "short",
           year: "2-digit",
         })
       }
       return date.toLocaleDateString("es-CO", {
+        timeZone: "America/Bogota",
         month: "short",
         day: "numeric",
       })

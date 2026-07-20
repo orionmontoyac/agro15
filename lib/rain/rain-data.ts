@@ -6,7 +6,12 @@ import {
   type SiataRainLayerResponse,
 } from "./siata-fetch"
 import { URRAO_STATION_CODE } from "./geoportal-rain"
-import { addDaysToIsoDate, getBogotaDateIso } from "./dates"
+import {
+  addDaysToIsoDate,
+  getBogotaDateIso,
+  getBogotaYear,
+  isOnOrBeforeBogotaToday,
+} from "./dates"
 import {
   computeMonthlyFromDailyRows,
   computePeriodsFromDailyRows,
@@ -199,7 +204,13 @@ export function getCurrentMonthAccumulation(
   monthly: RainfallMonthlyPoint[]
 ): number | null {
   if (monthly.length === 0) return null
-  const currentMonth = new Date().getMonth() + 1
+  const bogotaParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    month: "numeric",
+  }).formatToParts(new Date())
+  const currentMonth = Number(
+    bogotaParts.find((part) => part.type === "month")?.value
+  )
   const point = monthly.find((entry) => entry.month === currentMonth)
   return point?.rainMm ?? monthly[monthly.length - 1]?.rainMm ?? null
 }
@@ -228,27 +239,22 @@ export function computeDaysWithoutRain(
   if (byDate.size === 0) return null
 
   const bogotaToday = getBogotaDateIso()
-  // SIATA may already open the next calendar-day bucket (UTC/ahead of Bogotá).
-  // Start from the latest observation so recent rain on that tip is not ignored.
-  let latestDataDate = bogotaToday
+  // Only walk Bogotá calendar days that exist (ignore SIATA future buckets).
+  let latestDataDate: string | null = null
   for (const date of byDate.keys()) {
-    if (date > latestDataDate) latestDataDate = date
+    if (!isOnOrBeforeBogotaToday(date)) continue
+    if (latestDataDate == null || date > latestDataDate) latestDataDate = date
   }
+  if (latestDataDate == null) return null
 
   let count = 0
   let dateIso = latestDataDate
 
   while (count < 366) {
     const rain = byDate.get(dateIso)
-    const isTipDay = dateIso >= bogotaToday
 
-    if (isTipDay) {
+    if (dateIso === bogotaToday) {
       if (rain !== undefined && rain > 0) break
-      // Skip ahead-of-Bogotá empty/zero buckets without counting them as dry.
-      if (dateIso > bogotaToday) {
-        dateIso = addDaysToIsoDate(dateIso, -1)
-        continue
-      }
       // Bogotá today with missing or zero rain still counts as a dry day.
       count++
     } else {
@@ -313,7 +319,7 @@ function resolveMonthlySeries(
 }
 
 export async function getRainfallData(): Promise<RainfallData | null> {
-  const calendarYear = new Date().getFullYear()
+  const calendarYear = getBogotaYear()
   const [{ station, daily: dbDaily }, dbMonthly] = await Promise.all([
     getRainDailyFromDb(URRAO_STATION_CODE),
     getRainMonthlyFromDb(URRAO_STATION_CODE, calendarYear),

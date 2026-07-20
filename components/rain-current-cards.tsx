@@ -13,6 +13,7 @@ import {
   getRecentRainStatus,
   type RainfallData,
 } from "@/lib/rain/rain-data"
+import { BOGOTA_TIME_ZONE } from "@/lib/rain/dates"
 import {
   CalendarIcon,
   CloudRainIcon,
@@ -31,6 +32,7 @@ function formatUpdatedAt(value: string): string {
   if (Number.isNaN(date.getTime())) return value
 
   return date.toLocaleString("es-CO", {
+    timeZone: BOGOTA_TIME_ZONE,
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -45,6 +47,7 @@ type RainCurrentCardsProps = {
 
 export function RainCurrentCards({ data }: RainCurrentCardsProps) {
   const currentMonthLabel = new Date().toLocaleDateString("es-CO", {
+    timeZone: BOGOTA_TIME_ZONE,
     month: "long",
   })
 

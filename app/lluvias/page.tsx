@@ -2,10 +2,12 @@ import { AppShell } from "@/components/app-shell"
 import { RainCurrentCards } from "@/components/rain-current-cards"
 import { RainDailyChart } from "@/components/rain-daily-chart"
 import { RainMonthlyChart } from "@/components/rain-monthly-chart"
+import { getBogotaYear } from "@/lib/rain/dates"
 import { getRainfallData } from "@/lib/rain/rain-data"
 
 export default async function LluviasPage() {
   const rainfall = await getRainfallData()
+  const calendarYear = getBogotaYear()
 
   return (
     <AppShell title="Lluvias">
@@ -16,7 +18,7 @@ export default async function LluviasPage() {
             <p className="text-sm text-muted-foreground">
               Lluvia diaria y acumulados en Urrao (estación SIATA 641), vía
               Geoportal SIATA. La lluvia actual (5 min) se actualiza en vivo
-              cuando el servicio SIATA responde.
+              cuando el servicio SIATA responde. Fechas en hora de Bogotá.
             </p>
           </div>
 
@@ -42,7 +44,7 @@ export default async function LluviasPage() {
               {rainfall.monthly.length > 0 && (
                 <RainMonthlyChart
                   monthly={rainfall.monthly}
-                  calendarYear={new Date().getFullYear()}
+                  calendarYear={calendarYear}
                 />
               )}
             </div>

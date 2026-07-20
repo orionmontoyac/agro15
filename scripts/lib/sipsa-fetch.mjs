@@ -6,11 +6,16 @@ export const SIPSA_DEFAULT_TIMEOUT_MS = Number(
   process.env.SIPSA_FETCH_TIMEOUT_MS ?? 60_000
 )
 
+export const SIPSA_DEFAULT_RETRIES = Number(
+  process.env.SIPSA_FETCH_RETRIES ?? 4
+)
+
 const SIPSA_HEADERS = {
   Accept: 'application/json, text/plain, */*',
   'Accept-Language': 'es-CO,es;q=0.9,en;q=0.8',
   'Content-Type': 'application/json',
-  Connection: 'keep-alive',
+  // Flaky SIPSA host; avoid reuse of half-closed keep-alive sockets.
+  Connection: 'close',
   Origin: 'https://sen.dane.gov.co',
   Referer:
     'https://sen.dane.gov.co/variacionPrecioMayoristaSipsa_Client/',
@@ -18,18 +23,51 @@ const SIPSA_HEADERS = {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
 }
 
+function causeChain(error) {
+  const parts = []
+  let current = error
+  let depth = 0
+
+  while (current != null && depth < 5) {
+    if (current instanceof Error) {
+      if (current.code) parts.push(String(current.code))
+      if (current.message) parts.push(current.message)
+      current = current.cause
+    } else {
+      parts.push(String(current))
+      break
+    }
+    depth += 1
+  }
+
+  return parts.join(' | ')
+}
+
+export function isRetryableSipsaError(error) {
+  if (!(error instanceof Error)) return false
+  if (error.name === 'AbortError') return true
+
+  const text = causeChain(error).toLowerCase()
+  return (
+    text.includes('fetch failed') ||
+    text.includes('other side closed') ||
+    text.includes('socket hang up') ||
+    text.includes('econnreset') ||
+    text.includes('econnrefused') ||
+    text.includes('enotfound') ||
+    text.includes('etimedout') ||
+    text.includes('und_err_socket') ||
+    text.includes('und_err_connect_timeout') ||
+    text.includes('empty reply') ||
+    text.includes('network') ||
+    /\b5\d\d\b/.test(text)
+  )
+}
+
 function formatFetchError(error, url) {
   if (!(error instanceof Error)) {
     return new Error(`SIPSA request failed for ${url}`)
   }
-
-  const cause = error.cause
-  const causeMessage =
-    cause instanceof Error
-      ? cause.message
-      : cause != null
-        ? String(cause)
-        : null
 
   if (error.name === 'AbortError') {
     return new Error(
@@ -37,9 +75,38 @@ function formatFetchError(error, url) {
     )
   }
 
-  return new Error(
-    `${error.message}${causeMessage ? ` (${causeMessage})` : ''}`
-  )
+  const detail = causeChain(error)
+  const unreachable =
+    /other side closed|socket hang up|econnreset|und_err_socket|empty reply/i.test(
+      detail
+    )
+
+  if (unreachable) {
+    const isCatalogEndpoint =
+      /\/selectAllDptos\/|\/selectAllCitiesByDpto\/|\/selectAllProductsByCity\//.test(
+        url
+      )
+    return new Error(
+      `SIPSA host unreachable (${url}): connection closed by remote. ` +
+        `sen.dane.gov.co may be down — retry later` +
+        (isCatalogEndpoint
+          ? ', or seed local catalog with: npm run sync:sipsa-catalog -- --offline'
+          : '') +
+        `. Details: ${detail}`
+    )
+  }
+
+  return new Error(detail || error.message)
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function backoffMs(attempt) {
+  const base = 1000 * 2 ** attempt
+  const jitter = Math.floor(Math.random() * 400)
+  return Math.min(base + jitter, 15_000)
 }
 
 export async function sipsaFetch(path, options = {}) {
@@ -76,18 +143,30 @@ export async function sipsaFetchJson(path, options = {}) {
   return response.json()
 }
 
-async function sipsaFetchJsonWithRetry(path, maxRetries = 1) {
+export async function sipsaFetchJsonWithRetry(
+  path,
+  maxRetries = SIPSA_DEFAULT_RETRIES,
+  options = {}
+) {
   let lastError = null
+  const attempts = Math.max(1, maxRetries + 1)
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 2000 * attempt))
+      const delay = backoffMs(attempt - 1)
+      console.warn(
+        `  SIPSA retry ${attempt}/${maxRetries} for ${path} in ${delay}ms...`
+      )
+      await sleep(delay)
     }
 
     try {
-      return await sipsaFetchJson(path)
+      return await sipsaFetchJson(path, options)
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))
+      if (!isRetryableSipsaError(lastError) || attempt === attempts - 1) {
+        throw lastError
+      }
     }
   }
 
@@ -95,7 +174,7 @@ async function sipsaFetchJsonWithRetry(path, maxRetries = 1) {
 }
 
 export async function fetchSipsaDepartments() {
-  const rows = await sipsaFetchJson('/selectAllDptos/')
+  const rows = await sipsaFetchJsonWithRetry('/selectAllDptos/')
   if (!Array.isArray(rows)) return []
 
   return rows.map((row) => ({
@@ -105,7 +184,7 @@ export async function fetchSipsaDepartments() {
 }
 
 export async function fetchSipsaMunicipalitiesByDepartment(departmentCode) {
-  const rows = await sipsaFetchJson(
+  const rows = await sipsaFetchJsonWithRetry(
     `/selectAllCitiesByDpto/${departmentCode}`
   )
   if (!Array.isArray(rows)) return []
@@ -118,8 +197,7 @@ export async function fetchSipsaMunicipalitiesByDepartment(departmentCode) {
 
 export async function fetchSipsaProductsByCity(municipalityCode) {
   const rows = await sipsaFetchJsonWithRetry(
-    `/selectAllProductsByCity/${municipalityCode}`,
-    1
+    `/selectAllProductsByCity/${municipalityCode}`
   )
   if (!Array.isArray(rows)) return []
 
@@ -162,7 +240,7 @@ export async function fetchSipsaProductPrices(
     endDate,
     reportType = 'day',
   },
-  maxRetries = 3
+  maxRetries = SIPSA_DEFAULT_RETRIES
 ) {
   const payload = {
     depcod: departmentCode,
@@ -179,10 +257,15 @@ export async function fetchSipsaProductPrices(
   }
 
   let lastError = null
+  const attempts = Math.max(1, maxRetries)
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt))
+      const delay = backoffMs(attempt - 1)
+      console.warn(
+        `  SIPSA price retry ${attempt}/${attempts - 1} in ${delay}ms...`
+      )
+      await sleep(delay)
     }
 
     try {
@@ -201,7 +284,11 @@ export async function fetchSipsaProductPrices(
       const data = await response.json()
       return Array.isArray(data) ? data : []
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error('SIPSA fetch failed')
+      lastError =
+        error instanceof Error ? error : new Error('SIPSA fetch failed')
+      if (!isRetryableSipsaError(lastError) || attempt === attempts - 1) {
+        throw lastError
+      }
     }
   }
 
