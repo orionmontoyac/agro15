@@ -1,9 +1,21 @@
 import {
   fetchSipsaProductPrices,
   formatApiDate,
+  isRetryableSipsaError,
 } from './sipsa-fetch.mjs'
+import {
+  fetchExcelProductPrices,
+  isExcelSupportedProduct,
+} from './sipsa-prices-xlsx.mjs'
+import {
+  ensureTrackedCatalog,
+  findAgro15Product,
+  formatSupabaseError,
+  normalizeProductCode,
+} from './sipsa-catalog.mjs'
 
 export const DEFAULT_DAYS = 30
+export const PRICE_SOURCES = ['auto', 'api', 'excel']
 const CHUNK_BY_MONTH_AFTER_DAYS = 90
 const UPSERT_BATCH_SIZE = 500
 
@@ -11,6 +23,16 @@ export const LOCATIONS = [
   { label: 'Medellín', department_code: '05', municipality_code: '05001' },
   { label: 'Bogotá', department_code: '11', municipality_code: '11001' },
 ]
+
+export function normalizePriceSource(source) {
+  const value = String(source ?? 'auto').toLowerCase()
+  if (!PRICE_SOURCES.includes(value)) {
+    throw new Error(
+      `Invalid --source ${source}. Use one of: ${PRICE_SOURCES.join(', ')}`
+    )
+  }
+  return value
+}
 
 export function getDateRange(days) {
   const end = new Date()
@@ -140,6 +162,77 @@ export async function fetchPricesForLocation(
   return allRecords
 }
 
+async function fetchPricesForLocationExcel(
+  location,
+  productCode,
+  range,
+  log,
+  dayCache
+) {
+  return fetchExcelProductPrices({
+    productCode,
+    municipalityCode: location.municipality_code,
+    startIso: range.startIso,
+    endIso: range.endIso,
+    log,
+    dayCache,
+  })
+}
+
+async function fetchPricesWithSource(
+  location,
+  productCode,
+  range,
+  log,
+  source,
+  dayCache
+) {
+  if (source === 'excel') {
+    return {
+      records: await fetchPricesForLocationExcel(
+        location,
+        productCode,
+        range,
+        log,
+        dayCache
+      ),
+      sourceUsed: 'excel',
+    }
+  }
+
+  if (source === 'api') {
+    return {
+      records: await fetchPricesForLocation(location, productCode, range, log),
+      sourceUsed: 'api',
+    }
+  }
+
+  // auto: API first, Excel fallback on retryable host errors
+  try {
+    return {
+      records: await fetchPricesForLocation(location, productCode, range, log),
+      sourceUsed: 'api',
+    }
+  } catch (error) {
+    if (!isRetryableSipsaError(error)) throw error
+    if (!isExcelSupportedProduct(productCode)) throw error
+
+    log(
+      `  API unreachable — falling back to DANE daily Excel anexo (${error.message})`
+    )
+    return {
+      records: await fetchPricesForLocationExcel(
+        location,
+        productCode,
+        range,
+        log,
+        dayCache
+      ),
+      sourceUsed: 'excel',
+    }
+  }
+}
+
 export async function upsertPriceRows(supabase, rows) {
   for (let i = 0; i < rows.length; i += UPSERT_BATCH_SIZE) {
     const batch = rows.slice(i, i + UPSERT_BATCH_SIZE)
@@ -231,37 +324,97 @@ async function getLatestPriceDate(supabase, productId, municipalityId) {
   return data?.date ?? null
 }
 
-export async function loadCatalogIds(supabase, productCode) {
-  const { data: product, error: productError } = await supabase
+async function fetchProductRow(supabase, productCode) {
+  const { data, error } = await supabase
     .from('sipsa_products')
     .select('id, product_code, product_name')
     .eq('product_code', productCode)
-    .single()
+    .maybeSingle()
 
-  if (productError || !product) {
-    throw new Error(
-      `Product ${productCode} not found in Supabase. Run npm run sync:sipsa-catalog first.`
-    )
-  }
+  return { data, error }
+}
 
+async function fetchMunicipalities(supabase) {
   const municipalityCodes = LOCATIONS.map((loc) => loc.municipality_code)
-  const { data: municipalities, error: munError } = await supabase
+  return supabase
     .from('sipsa_municipalities')
     .select('id, municipality_code, municipality_name, department_id')
     .in('municipality_code', municipalityCodes)
+}
 
-  if (munError) {
-    throw new Error(`Failed to load municipalities: ${munError.message}`)
+export async function loadCatalogIds(supabase, productCode, { log = () => {} } = {}) {
+  const code = normalizeProductCode(productCode)
+  if (!code) {
+    throw new Error('Product code is required')
   }
 
-  const munByCode = new Map(
+  let { data: product, error: productError } = await fetchProductRow(
+    supabase,
+    code
+  )
+
+  // Any non-empty PostgREST error here is NOT "missing row" — surface it.
+  if (productError) {
+    throw new Error(
+      `Failed to load product ${code}: ${formatSupabaseError(productError)}`
+    )
+  }
+
+  let { data: municipalities, error: munError } = await fetchMunicipalities(
+    supabase
+  )
+
+  if (munError) {
+    throw new Error(
+      `Failed to load municipalities: ${formatSupabaseError(munError)}`
+    )
+  }
+
+  let munByCode = new Map(
     (municipalities ?? []).map((row) => [row.municipality_code, row])
   )
+  const missingMunicipalities = LOCATIONS.some(
+    (loc) => !munByCode.has(loc.municipality_code)
+  )
+
+  // Self-heal for known Agro15 products / tracked cities instead of a false
+  // "product not found" when the row exists but catalog lookup was incomplete.
+  if ((!product || missingMunicipalities) && findAgro15Product(code)) {
+    await ensureTrackedCatalog(supabase, code, { log })
+
+    ;({ data: product, error: productError } = await fetchProductRow(
+      supabase,
+      code
+    ))
+    if (productError) {
+      throw new Error(
+        `Failed to load product ${code} after catalog ensure: ${formatSupabaseError(productError)}`
+      )
+    }
+
+    ;({ data: municipalities, error: munError } =
+      await fetchMunicipalities(supabase))
+    if (munError) {
+      throw new Error(
+        `Failed to load municipalities after catalog ensure: ${formatSupabaseError(munError)}`
+      )
+    }
+
+    munByCode = new Map(
+      (municipalities ?? []).map((row) => [row.municipality_code, row])
+    )
+  }
+
+  if (!product) {
+    throw new Error(
+      `Product ${code} not found in sipsa_products. For Agro15 fruits run with a known code, or: npm run sync:sipsa-catalog -- --offline`
+    )
+  }
 
   for (const loc of LOCATIONS) {
     if (!munByCode.has(loc.municipality_code)) {
       throw new Error(
-        `Municipality ${loc.municipality_code} not found. Run npm run sync:sipsa-catalog first.`
+        `Municipality ${loc.municipality_code} not found in sipsa_municipalities. Run: npm run sync:sipsa-catalog -- --offline`
       )
     }
   }
@@ -272,10 +425,22 @@ export async function loadCatalogIds(supabase, productCode) {
 async function syncProductPricesInternal(
   supabase,
   productCode,
-  { range: fixedRange, update = false, log = () => {} }
+  { range: fixedRange, update = false, source = 'auto', log = () => {} }
 ) {
-  const { product, munByCode } = await loadCatalogIds(supabase, productCode)
+  const priceSource = normalizePriceSource(source)
+
+  if (priceSource === 'excel' && !isExcelSupportedProduct(productCode)) {
+    throw new Error(
+      `Product ${productCode} is not available in the SIPSA daily Excel bulletin. Use --source api or a mapped product (106 Granadilla, 116 Lulo, 148 Tomate de árbol).`
+    )
+  }
+
+  const { product, munByCode } = await loadCatalogIds(supabase, productCode, {
+    log,
+  })
   const locationResults = []
+  const excelDayCache = new Map()
+  let effectiveSource = priceSource
 
   for (const location of LOCATIONS) {
     log(`Fetching ${location.label} (${location.municipality_code})...`)
@@ -315,12 +480,21 @@ async function syncProductPricesInternal(
       }
     }
 
-    const records = await fetchPricesForLocation(
+    const { records, sourceUsed } = await fetchPricesWithSource(
       location,
       productCode,
       range,
-      log
+      log,
+      effectiveSource,
+      excelDayCache
     )
+
+    if (sourceUsed === 'excel') {
+      log(`  Source: DANE Excel anexo`)
+      if (priceSource === 'auto') {
+        effectiveSource = 'excel'
+      }
+    }
 
     const { rows, marketName } = mapPriceRecords(
       records,
@@ -336,6 +510,7 @@ async function syncProductPricesInternal(
         location: location.label,
         count: 0,
         latestDate: null,
+        source: sourceUsed,
       })
       continue
     }
@@ -355,6 +530,7 @@ async function syncProductPricesInternal(
       count: rows.length,
       latestDate: latest.date,
       latestPrice: latest.price,
+      source: sourceUsed,
     })
   }
 
@@ -371,6 +547,7 @@ async function syncProductPricesInternal(
 export async function syncProductPricesUpdate(supabase, productCode, options = {}) {
   return syncProductPricesInternal(supabase, productCode, {
     update: true,
+    source: options.source ?? 'auto',
     log: options.log ?? (() => {}),
   })
 }
@@ -383,6 +560,7 @@ export async function syncProductPrices(supabase, productCode, options = {}) {
   return syncProductPricesInternal(supabase, productCode, {
     range: options.range,
     update: false,
+    source: options.source ?? 'auto',
     log: options.log ?? (() => {}),
   })
 }
@@ -390,12 +568,14 @@ export async function syncProductPrices(supabase, productCode, options = {}) {
 export async function syncAllProductsUpdate({
   supabase,
   productCodes,
+  source = 'auto',
   log = console.log,
 }) {
   const settled = await Promise.allSettled(
     productCodes.map(async (productCode) => {
       log(`Syncing product ${productCode}...`)
       const result = await syncProductPricesUpdate(supabase, productCode, {
+        source,
         log: (message) => log(`  [${productCode}] ${message}`),
       })
       log(
