@@ -270,11 +270,13 @@ type ChartAreaInteractiveProps = {
   municipalityFilter?: MunicipalityFilter
 }
 
-type TimeRange = "7d" | "30d" | "1y" | "3y" | "5y"
+type TimeRange = "7d" | "30d" | "3m" | "6m" | "1y" | "3y" | "5y"
 
 const TIME_RANGE_DAYS: Record<TimeRange, number> = {
   "7d": 7,
   "30d": 30,
+  "3m": 91,
+  "6m": 182,
   "1y": 365,
   "3y": 365 * 3,
   "5y": 365 * 5,
@@ -283,12 +285,25 @@ const TIME_RANGE_DAYS: Record<TimeRange, number> = {
 const TIME_RANGE_LABELS: Record<TimeRange, string> = {
   "7d": "Últimos 7 días",
   "30d": "Últimos 30 días",
+  "3m": "Últimos 3 meses",
+  "6m": "Últimos 6 meses",
   "1y": "Último año",
   "3y": "Últimos 3 años",
   "5y": "Últimos 5 años",
 }
 
-const TIME_RANGE_OPTIONS: TimeRange[] = ["7d", "30d", "1y", "3y", "5y"]
+/** Compact labels for the desktop toggle buttons. */
+const TIME_RANGE_SHORT_LABELS: Record<TimeRange, string> = {
+  "7d": "7 días",
+  "30d": "30 días",
+  "3m": "3 meses",
+  "6m": "6 meses",
+  "1y": "1 año",
+  "3y": "3 años",
+  "5y": "5 años",
+}
+
+const TIME_RANGE_OPTIONS: TimeRange[] = ["7d", "30d", "3m", "6m", "1y", "3y", "5y"]
 
 export function ChartAreaInteractive({
   dataByProduct,
@@ -416,8 +431,12 @@ export function ChartAreaInteractive({
             className="hidden flex-wrap *:data-[slot=toggle-group-item]:px-3! @[767px]/card:flex"
           >
             {TIME_RANGE_OPTIONS.map((option) => (
-              <ToggleGroupItem key={option} value={option}>
-                {TIME_RANGE_LABELS[option]}
+              <ToggleGroupItem
+                key={option}
+                value={option}
+                aria-label={TIME_RANGE_LABELS[option]}
+              >
+                {TIME_RANGE_SHORT_LABELS[option]}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
