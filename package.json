@@ -19,7 +19,9 @@
     "sync:sipsa-insumos": "node --env-file=.env.local scripts/sync-sipsa-insumos.mjs",
     "sync:siata-rain": "node --env-file=.env.local scripts/sync-siata-rain.mjs",
     "probe:sipsa-soap": "node scripts/probe-sipsa-soap.mjs",
-    "test:projections": "tsx scripts/test-projections.ts"
+    "test:projections": "tsx scripts/test-projections.ts",
+    "sync:insumo-indice": "node --env-file=.env.local scripts/sync-insumo-indice.mjs",
+    "seed:insumo-indice": "node --env-file=.env.local scripts/seed-insumo-precio-indice.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
