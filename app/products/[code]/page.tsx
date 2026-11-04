@@ -36,6 +36,14 @@ export async function generateMetadata({
   return buildProductPageMetadata(product)
 }
 
+/** SIPSA prices sync twice a day; product pages render on first visit, then refresh every 30 min. */
+export const revalidate = 1800
+
+/** No paths at build time: each product page is rendered on first visit, then cached (ISR). */
+export async function generateStaticParams() {
+  return []
+}
+
 export default async function ProductDetailPage({
   params,
 }: ProductDetailPageProps) {

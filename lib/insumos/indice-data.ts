@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createPublicClient } from "@/lib/supabase/public"
 
 import type { InsumoIndiceDataset, InsumoIndiceSerie } from "./indice-types"
 
@@ -20,25 +20,40 @@ const PAGE_SIZE = 1000
 export async function getInsumoIndiceDataset(
   options: { productos?: string[] } = {}
 ): Promise<InsumoIndiceDataset> {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
+  const productos = options.productos?.length ? options.productos : null
+
+  // Count first, then fetch all pages in parallel instead of one after another.
+  let countQuery = supabase
+    .from("insumo_precio_indice")
+    .select("id", { count: "exact", head: true })
+  if (productos) countQuery = countQuery.in("producto", productos)
+  const { count, error: countError } = await countQuery
+  if (countError) {
+    console.error("insumo_precio_indice count failed:", countError.message)
+  }
+
+  const pageCount = Math.ceil((count ?? 0) / PAGE_SIZE)
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) => {
+      let query = supabase
+        .from("insumo_precio_indice")
+        .select("fecha, categoria, producto, valor")
+      if (productos) query = query.in("producto", productos)
+      return query
+        .order("fecha", { ascending: true })
+        .order("producto", { ascending: true })
+        .range(i * PAGE_SIZE, (i + 1) * PAGE_SIZE - 1)
+    })
+  )
+
   const rows: IndiceRow[] = []
-
-  for (let from = 0; ; from += PAGE_SIZE) {
-    let query = supabase
-      .from("insumo_precio_indice")
-      .select("fecha, categoria, producto, valor")
-    if (options.productos?.length) query = query.in("producto", options.productos)
-    const { data, error } = await query
-      .order("fecha", { ascending: true })
-      .order("producto", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1)
-
+  for (const { data, error } of pages) {
     if (error) {
       console.error("insumo_precio_indice load failed:", error.message)
-      break
+      continue
     }
     rows.push(...((data ?? []) as IndiceRow[]))
-    if (!data || data.length < PAGE_SIZE) break
   }
 
   const fechas = [...new Set(rows.map((r) => r.fecha))].sort()

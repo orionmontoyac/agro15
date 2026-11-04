@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createPublicClient } from "@/lib/supabase/public"
 
 import { type ChartPoint } from "./chart-series"
 import { BOGOTA_CODE, MEDELLIN_CODE } from "./constants"
@@ -242,7 +242,7 @@ const PRICE_ROW_SELECT = `
 `
 
 async function fetchPriceRowsBatch(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: ReturnType<typeof createPublicClient>,
   options: { productIds?: number[]; days?: number; reportType: ReportType }
 ): Promise<RawPriceRow[]> {
   const { productIds, days, reportType } = options
@@ -294,7 +294,7 @@ export async function fetchPriceRows(
 ): Promise<RawPriceRow[]> {
   const { productIds, reportType = "day" } = options
   const days = "days" in options ? options.days : 90
-  const supabase = await createClient()
+  const supabase = createPublicClient()
 
   if (!productIds?.length) {
     return fetchPriceRowsBatch(supabase, { days, reportType })

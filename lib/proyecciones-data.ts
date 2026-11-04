@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createPublicClient } from "@/lib/supabase/public"
 
 export type ProjectionProductOption = {
   id: number
@@ -19,7 +19,7 @@ type RpcProjectionProduct = {
 export async function getProjectionProductOptions(): Promise<
   ProjectionProductOption[]
 > {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
   const { data, error } = await supabase.rpc("get_projection_products")
 
   if (error) {

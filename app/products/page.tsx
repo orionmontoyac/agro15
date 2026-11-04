@@ -3,6 +3,9 @@ import { ProductsTable } from "@/components/products-table"
 import { Badge } from "@/components/ui/badge"
 import { computeProductTrendSummary, getProductsList } from "@/lib/sipsa/products-data"
 
+/** SIPSA prices sync twice a day; serve a cached page and refresh every 30 min. */
+export const revalidate = 1800
+
 export default async function ProductsPage() {
   const products = await getProductsList()
   const summary =
