@@ -5,6 +5,9 @@ import { getInsumoIndiceDataset } from "@/lib/insumos/indice-data"
 import { formatMesLargo } from "@/lib/insumos/indice-types"
 import { getInsumosPageData } from "@/lib/sipsa/insumos-data"
 
+/** UPRA / SIPSA-I insumo data is monthly; refresh every 6 h. */
+export const revalidate = 21600
+
 export default async function InsumosPage() {
   const [data, indice] = await Promise.all([
     getInsumosPageData(),

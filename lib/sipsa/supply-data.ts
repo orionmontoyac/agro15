@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createPublicClient } from "@/lib/supabase/public"
 
 import { BOGOTA_CODE, MEDELLIN_CODE } from "./constants"
 
@@ -68,7 +68,7 @@ function cityLabel(code: string, name: string | undefined): string {
 export async function getProductSupply(
   productId: number
 ): Promise<ProductSupplySummary> {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
   const start = new Date()
   start.setMonth(start.getMonth() - 12)
   const startIso = start.toISOString().slice(0, 10)

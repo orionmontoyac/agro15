@@ -9,7 +9,7 @@ import {
   type YieldReference,
 } from "@/lib/projections"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { createPublicClient } from "@/lib/supabase/public"
 
 const bodySchema = z.object({
   productId: z.number().int().positive(),
@@ -91,7 +91,7 @@ function mapMonthlyStats(rows: RpcMonthlyPriceStat[]): MonthlyPriceStat[] {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
 
   let json: unknown
   try {

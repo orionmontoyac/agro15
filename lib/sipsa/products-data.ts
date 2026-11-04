@@ -1,4 +1,6 @@
-import { createClient } from "@/lib/supabase/server"
+import { cache } from "react"
+
+import { createPublicClient } from "@/lib/supabase/public"
 
 import { BOGOTA_CODE, MEDELLIN_CODE } from "./constants"
 import {
@@ -18,6 +20,7 @@ import {
   getComparisonDateIso,
   getLatestPrice,
   getLatestPriceForCity,
+  getStartDateIso,
   type ChartPoint,
   type RawPriceRow,
 } from "./price-fetch"
@@ -253,7 +256,7 @@ function aggregateProductListRow(
 }
 
 export async function getProductsList(): Promise<ProductListRow[]> {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
 
   const { data: products, error } = await supabase
     .from("sipsa_products")
@@ -281,10 +284,11 @@ export async function getProductsList(): Promise<ProductListRow[]> {
     })
 }
 
-export async function getProductByCode(
+/** Deduped per request: generateMetadata and the page both call it. */
+export const getProductByCode = cache(async function getProductByCode(
   code: string
 ): Promise<{ id: number; product_code: string; product_name: string } | null> {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
 
   const { data, error } = await supabase
     .from("sipsa_products")
@@ -297,14 +301,14 @@ export async function getProductByCode(
   }
 
   return data
-}
+})
 
 export async function getProductDetail(code: string): Promise<ProductDetail | null> {
   const product = await getProductByCode(code)
   if (!product) return null
 
-  const [dailyRows, heatmapRows, supply] = await Promise.all([
-    fetchPriceRows({ productIds: [product.id], reportType: "day", days: 365 * 5 }),
+  // One all-time fetch: the heatmap needs every row, everything else the last 5 years.
+  const [heatmapRows, supply] = await Promise.all([
     fetchPriceRows({
       productIds: [product.id],
       reportType: "day",
@@ -313,7 +317,8 @@ export async function getProductDetail(code: string): Promise<ProductDetail | nu
     getProductSupply(product.id),
   ])
 
-  const rows = dailyRows
+  const fiveYearsStart = getStartDateIso(365 * 5)
+  const rows = heatmapRows.filter((row) => row.date >= fiveYearsStart)
   const hasPriceData = rows.length > 0
 
   const medellin = buildCitySummary(

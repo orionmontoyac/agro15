@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache"
 import {
   fetchSiataRainLayer,
   getUrraoSensor,
@@ -276,11 +277,24 @@ export function formatDaysWithoutRainLabel(days: number | null): string {
   return `${days} días consecutivos sin lluvia`
 }
 
-async function fetchLiveSiataLayerContext(): Promise<{
+type LiveSiataContext = {
   current: RainfallData["current"]
   stationCode?: string
   monthly: RainfallMonthlyPoint[]
-}> {
+}
+
+/**
+ * The raw SIATA layer is ~6 MB (all Antioquia sensors), over Next's 2 MB data
+ * cache limit, so caching the fetch itself never worked. Cache only the small
+ * parsed Urrao reading for 5 min instead.
+ */
+const fetchLiveSiataLayerContext = unstable_cache(
+  fetchLiveSiataLayerContextUncached,
+  ["siata-live-urrao"],
+  { revalidate: 300 }
+)
+
+async function fetchLiveSiataLayerContextUncached(): Promise<LiveSiataContext> {
   try {
     const layer = await fetchSiataRainLayer()
     if (!layer) return { current: null, monthly: [] }
@@ -320,11 +334,12 @@ function resolveMonthlySeries(
 
 export async function getRainfallData(): Promise<RainfallData | null> {
   const calendarYear = getBogotaYear()
-  const [{ station, daily: dbDaily }, dbMonthly] = await Promise.all([
+  // SIATA (external, slowest) runs in parallel with the DB reads.
+  const [{ station, daily: dbDaily }, dbMonthly, live] = await Promise.all([
     getRainDailyFromDb(URRAO_STATION_CODE),
     getRainMonthlyFromDb(URRAO_STATION_CODE, calendarYear),
+    fetchLiveSiataLayerContext(),
   ])
-  const live = await fetchLiveSiataLayerContext()
 
   if (dbDaily.length > 0) {
     const dbRows = dbDaily.map((row) => ({

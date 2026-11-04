@@ -5,6 +5,9 @@ import { RainMonthlyChart } from "@/components/rain-monthly-chart"
 import { getBogotaYear } from "@/lib/rain/dates"
 import { getRainfallData } from "@/lib/rain/rain-data"
 
+/** Live SIATA rain; matches the 5 min SIATA fetch revalidate. */
+export const revalidate = 300
+
 export default async function LluviasPage() {
   const rainfall = await getRainfallData()
   const calendarYear = getBogotaYear()

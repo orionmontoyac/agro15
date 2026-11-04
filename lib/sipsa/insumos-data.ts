@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createPublicClient } from "@/lib/supabase/public"
 
 import { BOGOTA_CODE, MEDELLIN_CODE } from "./constants"
 
@@ -94,7 +94,7 @@ function aggregateListRows(rows: InsumoDbRow[]): InsumoListRow[] {
 export async function getInsumosPageData(): Promise<
   InsumosPageData & { historyByInsumo: Record<string, InsumoMonthlyPoint[]> }
 > {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
   const start = new Date()
   start.setMonth(start.getMonth() - 36)
   const startIso = start.toISOString().slice(0, 10)
@@ -180,7 +180,7 @@ export async function getInsumosPageData(): Promise<
 export async function getInsumoHistory(
   insumoName: string
 ): Promise<InsumoMonthlyPoint[]> {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
   const start = new Date()
   start.setMonth(start.getMonth() - 24)
   const startIso = start.toISOString().slice(0, 10)

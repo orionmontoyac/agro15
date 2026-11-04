@@ -75,7 +75,8 @@ export async function fetchSiataRainLayer(): Promise<SiataRainLayerResponse | nu
       headers: SIATA_HEADERS,
       body: `id_capa=${SIATA_RAIN_LAYER_ID}`,
       signal: controller.signal,
-      next: { revalidate: 300 },
+      // ~6 MB response: too big for Next's 2 MB data cache, so it is not cached
+      // here; rain-data caches the small parsed Urrao reading instead.
     })
 
     if (!response.ok) {

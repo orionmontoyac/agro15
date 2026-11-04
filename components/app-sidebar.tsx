@@ -21,7 +21,6 @@ const data = {
   user: {
     name: "Usuario",
     email: "usuario@agro15.co",
-    avatar: "/avatars/shadcn.jpg",
   },
   navMain: [
     {

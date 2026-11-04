@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createPublicClient } from "@/lib/supabase/public"
 
 import { addDaysToIsoDate, getBogotaDateIso } from "./dates"
 import { URRAO_STATION_CODE } from "./geoportal-rain"
@@ -143,7 +143,7 @@ export async function getRainDailyFromDb(
   station: RainStationDbRow | null
   daily: RainDailyDbRow[]
 }> {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
 
   const [{ data: stationData }, { data: dailyData }] = await Promise.all([
     supabase
@@ -185,7 +185,7 @@ export async function getRainMonthlyFromDb(
     }).format(new Date())
   )
 ): Promise<RainfallMonthlyDbPoint[]> {
-  const supabase = await createClient()
+  const supabase = createPublicClient()
 
   const { data } = await supabase
     .from("siata_rain_monthly")
